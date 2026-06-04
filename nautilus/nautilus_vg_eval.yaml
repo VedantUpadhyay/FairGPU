@@ -90,7 +90,7 @@ spec:
           pip install -e . --quiet
 
           # Install vllm from pip (provides compiled _C ext)
-          pip install vllm==0.4.3 --quiet
+          pip install vllm --quiet
 
           # Install datasets
           pip install datasets --quiet
