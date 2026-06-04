@@ -1,0 +1,24 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# vLLM is a dependency, not our code
+# Track as submodule OR exclude entirely
+vllm/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor
+.DS_Store
+.vscode/
+.idea/
