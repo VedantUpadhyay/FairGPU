@@ -1,0 +1,9 @@
+setup.py
+faircpu/__init__.py
+faircpu/value_curves.py
+faircpu.egg-info/PKG-INFO
+faircpu.egg-info/SOURCES.txt
+faircpu.egg-info/dependency_links.txt
+faircpu.egg-info/top_level.txt
+tests/__init__.py
+tests/test_value_curves.py
