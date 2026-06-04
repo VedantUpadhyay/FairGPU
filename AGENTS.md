@@ -43,6 +43,19 @@ in this repository or in the external reference path above.
 The goal is one consistent framework across both papers, not two independent
 implementations.
 
+## vLLM Integration
+vLLM is tracked as a git submodule at `./vllm/`.
+Our scheduler changes are NOT committed inside `vllm/`.
+Instead they live as a patch file:
+  `patches/vllm_value_greedy.patch`
+
+To apply after cloning FairGPU fresh:
+  `git submodule update --init`
+  `bash patches/apply_vllm_patch.sh`
+
+To update the patch after making new vLLM edits:
+  `cd vllm && git diff > ../patches/vllm_value_greedy.patch`
+
 ## Coding standards
 - Match vllm's existing code style exactly
 - Every new function gets a docstring

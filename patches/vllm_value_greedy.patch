@@ -1,0 +1,158 @@
+diff --git a/vllm/config/scheduler.py b/vllm/config/scheduler.py
+index 7900c9484..193224481 100644
+--- a/vllm/config/scheduler.py
++++ b/vllm/config/scheduler.py
+@@ -19,7 +19,7 @@ if TYPE_CHECKING:
+ logger = init_logger(__name__)
+ 
+ RunnerType = Literal["generate", "pooling", "draft"]
+-SchedulerPolicy = Literal["fcfs", "priority"]
++SchedulerPolicy = Literal["fcfs", "priority", "value_greedy"]
+ 
+ 
+ @config
+diff --git a/vllm/engine/arg_utils.py b/vllm/engine/arg_utils.py
+index 0490cbc3e..205aa1e2c 100644
+--- a/vllm/engine/arg_utils.py
++++ b/vllm/engine/arg_utils.py
+@@ -1389,7 +1389,11 @@ class EngineArgs:
+         # multi-step scheduling has been removed; corresponding arguments
+         # are no longer supported.
+         scheduler_group.add_argument(
+-            "--scheduling-policy", **scheduler_kwargs["policy"]
++            "--scheduling-policy",
++            **{
++                **scheduler_kwargs["policy"],
++                "choices": ["fcfs", "priority", "value_greedy"],
++            },
+         )
+         scheduler_group.add_argument(
+             "--enable-chunked-prefill",
+diff --git a/vllm/v1/core/sched/request_queue.py b/vllm/v1/core/sched/request_queue.py
+index 38c7db94a..25679ba45 100644
+--- a/vllm/v1/core/sched/request_queue.py
++++ b/vllm/v1/core/sched/request_queue.py
+@@ -2,12 +2,19 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ 
+ import heapq
++import time as _time
+ from abc import ABC, abstractmethod
+ from collections import deque
+ from collections.abc import Iterable, Iterator
+ from enum import Enum
++from typing import TYPE_CHECKING
+ 
+-from vllm.v1.request import Request
++from faircpu.value_curves import value_greedy_key
++
++if TYPE_CHECKING:
++    from vllm.v1.request import Request
++else:
++    Request = object
+ 
+ 
+ class SchedulingPolicy(Enum):
+@@ -15,6 +22,7 @@ class SchedulingPolicy(Enum):
+ 
+     FCFS = "fcfs"
+     PRIORITY = "priority"
++    VALUE_GREEDY = "value_greedy"
+ 
+ 
+ class RequestQueue(ABC):
+@@ -198,10 +206,94 @@ class PriorityRequestQueue(RequestQueue):
+             yield heapq.heappop(heap_copy)
+ 
+ 
++class ValueGreedyRequestQueue(RequestQueue):
++    """
++    Schedules requests in descending order of instantaneous value decay rate.
++    Higher decay rate = more urgent = served first.
++    """
++
++    def __init__(self) -> None:
++        self._queue: list[Request] = []
++
++    def _sort(self) -> None:
++        """Sort requests by descending instantaneous value decay rate."""
++        self._queue.sort(
++            key=lambda r: value_greedy_key(r, _time.time()),
++            reverse=True,
++        )
++
++    def add_request(self, request: Request) -> None:
++        """Add a request to the queue according to value-greedy policy."""
++        self._queue.append(request)
++        self._sort()
++
++    def pop_request(self) -> Request:
++        """Pop a request from the queue according to value-greedy policy."""
++        if not self._queue:
++            raise IndexError("pop from empty ValueGreedyQueue")
++        self._sort()
++        return self._queue.pop(0)
++
++    def peek_request(self) -> Request:
++        """Peek at the next request in the queue without removing it."""
++        if not self._queue:
++            raise IndexError("peek from empty ValueGreedyQueue")
++        self._sort()
++        return self._queue[0]
++
++    def prepend_request(self, request: Request) -> None:
++        """Add a request to the queue according to value-greedy policy."""
++        self.add_request(request)
++
++    def prepend_requests(self, requests: RequestQueue) -> None:
++        """Add all requests from another queue according to value-greedy policy."""
++        for request in requests:
++            self._queue.append(request)
++        self._sort()
++
++    def remove_request(self, request: Request) -> None:
++        """Remove a specific request from the queue."""
++        self._queue.remove(request)
++
++    def remove_requests(self, requests: Iterable[Request]) -> None:
++        """Remove multiple specific requests from the queue."""
++        requests_to_remove = requests if isinstance(requests, set) else set(requests)
++        self._queue = [r for r in self._queue if r not in requests_to_remove]
++
++    def add(self, request: Request) -> None:
++        """Add a request to the queue according to value-greedy policy."""
++        self.add_request(request)
++
++    def pop(self) -> Request:
++        """Pop a request from the queue according to value-greedy policy."""
++        return self.pop_request()
++
++    def peek(self) -> Request | None:
++        """Peek at the next request in the queue without removing it."""
++        if not self._queue:
++            return None
++        return self.peek_request()
++
++    def __len__(self) -> int:
++        """Get number of requests in queue."""
++        return len(self._queue)
++
++    def __iter__(self) -> Iterator[Request]:
++        """Iterate over the queue according to value-greedy policy."""
++        self._sort()
++        return iter(self._queue)
++
++    def __bool__(self) -> bool:
++        """Check if queue has any requests."""
++        return len(self._queue) > 0
++
++
+ def create_request_queue(policy: SchedulingPolicy) -> RequestQueue:
+     """Create request queue based on scheduling policy."""
+     if policy == SchedulingPolicy.PRIORITY:
+         return PriorityRequestQueue()
++    elif policy == SchedulingPolicy.VALUE_GREEDY:
++        return ValueGreedyRequestQueue()
+     elif policy == SchedulingPolicy.FCFS:
+         return FCFSRequestQueue()
+     else:
