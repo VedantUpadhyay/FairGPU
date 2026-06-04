@@ -5,8 +5,6 @@ import os
 import sys
 import time
 
-# Add vllm to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../vllm"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from experiments.vg_eval.dataset import load_mixed_trace

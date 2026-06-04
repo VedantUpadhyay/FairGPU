@@ -55,8 +55,7 @@ spec:
             https://github.com/VedantUpadhyay/FairGPU.git \
             /workspace/FairGPU
           cd /workspace/FairGPU
-          sh patches/apply_vllm_patch.sh
-          echo "Repo and patch ready"
+          echo "Repo ready"
           ls faircpu/value_curves.py
           ls vllm/vllm/v1/core/sched/request_queue.py
         volumeMounts:
@@ -79,9 +78,9 @@ spec:
           set -e
           CONDITIONS=(fcfs priority value_greedy)
           IDX=${JOB_COMPLETION_INDEX:-0}
+          CONDITION=${CONDITIONS[$IDX]}
           echo "JOB_COMPLETION_INDEX=${JOB_COMPLETION_INDEX}"
           echo "Condition will be: ${CONDITIONS[$JOB_COMPLETION_INDEX]}"
-          CONDITION=${CONDITIONS[$IDX]}
           echo "=== Pod $IDX: condition=$CONDITION ==="
 
           cd /workspace/FairGPU
@@ -89,13 +88,27 @@ spec:
           # Install faircpu package
           pip install -e . --quiet
 
-          # Install vLLM and datasets for trace loading
-          pip install vllm --quiet
+          # Install vllm from pip (provides compiled _C ext)
+          pip install vllm==0.4.3 --quiet
+
+          # Install datasets
           pip install datasets --quiet
 
-          # Add vllm submodule to path
-          export PYTHONPATH=/workspace/FairGPU:\
-          /workspace/FairGPU/vllm:$PYTHONPATH
+          # Now patch the pip-installed vllm
+          # (NOT the submodule - that caused the _C error)
+          bash patches/apply_vllm_patch.sh
+
+          # Do NOT add vllm submodule to PYTHONPATH
+          # Use pip-installed vllm only
+          export PYTHONPATH=/workspace/FairGPU:$PYTHONPATH
+
+          # Verify patch worked
+          python3 -c "
+          from vllm.v1.core.sched.request_queue import (
+              SchedulingPolicy, ValueGreedyRequestQueue)
+          print('Scheduler patch verified OK')
+          print('VALUE_GREEDY:', SchedulingPolicy.VALUE_GREEDY)
+          "
 
           python3 experiments/vg_eval/run_eval.py \
             --condition $CONDITION \
