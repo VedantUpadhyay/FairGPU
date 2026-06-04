@@ -7,7 +7,7 @@ spec:
   completions: 3
   parallelism: 3
   completionMode: Indexed
-  backoffLimit: 1
+  backoffLimit: 2
   template:
     spec:
       restartPolicy: Never
@@ -21,6 +21,9 @@ spec:
                 values:
                 - k8s-haosu-02
                 - k8s-haosu-03
+                - k8s-haosu-02.sdsc.optiputer.net
+                - k8s-haosu-03.sdsc.optiputer.net
+                - k8s-haosu-22.sdsc.optiputer.net
       initContainers:
       - name: clone-repo
         image: alpine/git
@@ -33,23 +36,32 @@ spec:
             https://github.com/VedantUpadhyay/FairGPU.git \
             /workspace/FairGPU
           cd /workspace/FairGPU
-          bash patches/apply_vllm_patch.sh
+          sh patches/apply_vllm_patch.sh
           echo "Repo and patch ready"
           ls faircpu/value_curves.py
           ls vllm/vllm/v1/core/sched/request_queue.py
         volumeMounts:
         - name: workspace
           mountPath: /workspace
+        resources:
+          requests:
+            cpu: "2"
+            memory: "4Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"
       containers:
       - name: eval
-        image: vllm/vllm-openai:v0.8.5
+        image: pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
         command:
-        - sh
-        - -c
+        - bash
+        - -lc
         - |
           set -e
           CONDITIONS=(fcfs priority value_greedy)
           IDX=${JOB_COMPLETION_INDEX:-0}
+          echo "JOB_COMPLETION_INDEX=${JOB_COMPLETION_INDEX}"
+          echo "Condition will be: ${CONDITIONS[$JOB_COMPLETION_INDEX]}"
           CONDITION=${CONDITIONS[$IDX]}
           echo "=== Pod $IDX: condition=$CONDITION ==="
 
@@ -58,7 +70,8 @@ spec:
           # Install faircpu package
           pip install -e . --quiet
 
-          # Install datasets for trace loading
+          # Install vLLM and datasets for trace loading
+          pip install vllm --quiet
           pip install datasets --quiet
 
           # Add vllm submodule to path
@@ -74,10 +87,6 @@ spec:
 
           echo "=== $CONDITION complete ==="
         env:
-        - name: JOB_COMPLETION_INDEX
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
         - name: VLLM_WORKER_MULTIPROC_METHOD
           value: "spawn"
         resources:
