@@ -1,0 +1,102 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fairgpu-vg-eval
+  namespace: systems-research-lab
+spec:
+  completions: 3
+  parallelism: 3
+  completionMode: Indexed
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - k8s-haosu-02
+                - k8s-haosu-03
+      initContainers:
+      - name: clone-repo
+        image: alpine/git
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          git clone --recurse-submodules \
+            https://github.com/VedantUpadhyay/FairGPU.git \
+            /workspace/FairGPU
+          cd /workspace/FairGPU
+          bash patches/apply_vllm_patch.sh
+          echo "Repo and patch ready"
+          ls faircpu/value_curves.py
+          ls vllm/vllm/v1/core/sched/request_queue.py
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+      containers:
+      - name: eval
+        image: vllm/vllm-openai:v0.8.5
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          CONDITIONS=(fcfs priority value_greedy)
+          IDX=${JOB_COMPLETION_INDEX:-0}
+          CONDITION=${CONDITIONS[$IDX]}
+          echo "=== Pod $IDX: condition=$CONDITION ==="
+
+          cd /workspace/FairGPU
+
+          # Install faircpu package
+          pip install -e . --quiet
+
+          # Install datasets for trace loading
+          pip install datasets --quiet
+
+          # Add vllm submodule to path
+          export PYTHONPATH=/workspace/FairGPU:\
+          /workspace/FairGPU/vllm:$PYTHONPATH
+
+          python3 experiments/vg_eval/run_eval.py \
+            --condition $CONDITION \
+            --n_interactive 300 \
+            --n_batch 700 \
+            --model facebook/opt-1.3b \
+            --output_dir /eval_outputs/$CONDITION/
+
+          echo "=== $CONDITION complete ==="
+        env:
+        - name: JOB_COMPLETION_INDEX
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+        - name: VLLM_WORKER_MULTIPROC_METHOD
+          value: "spawn"
+        resources:
+          requests:
+            cpu: "8"
+            memory: "32Gi"
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "8"
+            memory: "32Gi"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+        - name: eval-out
+          mountPath: /eval_outputs
+      volumes:
+      - name: workspace
+        emptyDir: {}
+      - name: eval-out
+        persistentVolumeClaim:
+          claimName: fairgpu-eval-out-pvc
