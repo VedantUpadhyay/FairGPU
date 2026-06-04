@@ -43,6 +43,7 @@ spec:
                 - k8s-haosu-27.sdsc.optiputer.net
                 - k8s-haosu-28.sdsc.optiputer.net
                 - k8s-haosu-29.sdsc.optiputer.net
+                - ry-gpu-02.sdsc.optiputer.net
       initContainers:
       - name: clone-repo
         image: alpine/git
