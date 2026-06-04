@@ -23,7 +23,26 @@ spec:
                 - k8s-haosu-03
                 - k8s-haosu-02.sdsc.optiputer.net
                 - k8s-haosu-03.sdsc.optiputer.net
+                - k8s-haosu-05.sdsc.optiputer.net
+                - k8s-haosu-06.sdsc.optiputer.net
+                - k8s-haosu-07.sdsc.optiputer.net
+                - k8s-haosu-09.sdsc.optiputer.net
+                - k8s-haosu-10.sdsc.optiputer.net
+                - k8s-haosu-11.sdsc.optiputer.net
+                - k8s-haosu-12.sdsc.optiputer.net
+                - k8s-haosu-15.sdsc.optiputer.net
+                - k8s-haosu-17.sdsc.optiputer.net
+                - k8s-haosu-18.sdsc.optiputer.net
+                - k8s-haosu-19.sdsc.optiputer.net
+                - k8s-haosu-21.sdsc.optiputer.net
                 - k8s-haosu-22.sdsc.optiputer.net
+                - k8s-haosu-23.sdsc.optiputer.net
+                - k8s-haosu-24.sdsc.optiputer.net
+                - k8s-haosu-25.sdsc.optiputer.net
+                - k8s-haosu-26.sdsc.optiputer.net
+                - k8s-haosu-27.sdsc.optiputer.net
+                - k8s-haosu-28.sdsc.optiputer.net
+                - k8s-haosu-29.sdsc.optiputer.net
       initContainers:
       - name: clone-repo
         image: alpine/git
