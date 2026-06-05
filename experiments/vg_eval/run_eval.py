@@ -59,7 +59,6 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
         params = SamplingParams(
             max_tokens=256,
             temperature=0.0,
-            truncate_prompt_tokens=1700,
         )
 
         first_token_time = None
