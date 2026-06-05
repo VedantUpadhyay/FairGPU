@@ -5,11 +5,40 @@
 
 set -e
 
-# Find pip-installed vllm location
-VLLM_PKG=$(python3 -c \
-  "import vllm; import os; \
-   print(os.path.dirname(vllm.__file__))")
+# Find pip-installed vllm location. A checked-out vllm/
+# submodule can appear as a namespace package with
+# __file__ = None, so search site-packages explicitly.
+VLLM_PKG=$(python3 - <<'PYEOF'
+import os
+import site
+import sys
 
+search_roots = []
+try:
+    search_roots.extend(site.getsitepackages())
+except AttributeError:
+    pass
+try:
+    search_roots.append(site.getusersitepackages())
+except AttributeError:
+    pass
+search_roots.extend(p for p in sys.path if "site-packages" in p)
+
+seen = set()
+for root in search_roots:
+    if not root or root in seen:
+        continue
+    seen.add(root)
+    candidate = os.path.join(root, "vllm", "__init__.py")
+    if os.path.exists(candidate):
+        print(os.path.join(root, "vllm"))
+        raise SystemExit(0)
+
+raise SystemExit(0)
+PYEOF
+)
+
+if [ -n "$VLLM_PKG" ]; then
 echo "Patching pip-installed vllm at: $VLLM_PKG"
 
 # Patch 1: Add value_greedy to SchedulingPolicy enum
@@ -249,29 +278,41 @@ PYEOF
 # Patch 2: Add value_greedy to SchedulerPolicy Literal
 CONFIG_FILE="$VLLM_PKG/config/scheduler.py"
 echo "Patching $CONFIG_FILE"
-python3 -c "
+CONFIG_FILE="$CONFIG_FILE" python3 - <<'PYEOF'
+import os
 import re
-with open('$CONFIG_FILE') as f:
+path = os.environ["CONFIG_FILE"]
+target = 'Literal["fcfs", "priority", "value_greedy", "value_greedy_aging"]'
+with open(path) as f:
     c = f.read()
-if 'value_greedy_aging' in c:
-    print('scheduler.py already patched')
-else:
-    if 'Literal["fcfs", "priority", "value_greedy"]' in c:
-        c = c.replace(
-            'Literal["fcfs", "priority", "value_greedy"]',
-            'Literal["fcfs", "priority", "value_greedy", '
-            '"value_greedy_aging"]'
-        )
-    else:
-        c = c.replace(
-            'Literal["fcfs", "priority"]',
-            'Literal["fcfs", "priority", "value_greedy", '
-            '"value_greedy_aging"]'
-        )
-    with open('$CONFIG_FILE', 'w') as f:
-        f.write(c)
-    print('scheduler.py patched OK')
-"
+
+c, alias_count = re.subn(
+    r'SchedulerPolicy\s*=\s*Literal\[[^\]]*\]',
+    f'SchedulerPolicy = {target}',
+    c,
+)
+
+literal_patterns = [
+    r'Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*\]',
+    r'Literal\[\s*([\"\'])priority\1\s*,\s*([\"\'])fcfs\2\s*\]',
+    r'Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*,\s*([\"\'])value_greedy\3\s*\]',
+    r'Literal\[\s*([\"\'])priority\1\s*,\s*([\"\'])fcfs\2\s*,\s*([\"\'])value_greedy\3\s*\]',
+]
+literal_count = 0
+for pattern in literal_patterns:
+    c, count = re.subn(pattern, target, c)
+    literal_count += count
+
+with open(path, 'w') as f:
+    f.write(c)
+
+if 'value_greedy_aging' not in c:
+    raise SystemExit('scheduler.py patch failed: value_greedy_aging missing')
+print(
+    'scheduler.py patched with regex OK '
+    f'(alias={alias_count}, literals={literal_count})'
+)
+PYEOF
 
 # Patch 3: Add value_greedy to arg_utils choices
 ARG_FILE="$VLLM_PKG/../vllm/engine/arg_utils.py"
@@ -305,7 +346,7 @@ done
 
 echo "All patches applied to pip vllm at $VLLM_PKG"
 
-# Verify
+# Verify pip-installed vllm patch.
 python3 -c "
 import sys
 sys.path.insert(0, '/workspace/FairGPU')
@@ -316,3 +357,50 @@ print('Verification OK:',
       SchedulingPolicy.VALUE_GREEDY,
       SchedulingPolicy.VALUE_GREEDY_AGING)
 "
+else
+echo "No pip-installed vllm package found; skipping pip patch"
+fi
+
+# Mirror the scheduler.py Literal patch into the local
+# submodule when present so local verification with
+# sys.path.insert(0, "vllm") observes the same policy.
+LOCAL_CONFIG_FILE="./vllm/vllm/config/scheduler.py"
+if [ -f "$LOCAL_CONFIG_FILE" ]; then
+    echo "Patching local submodule $LOCAL_CONFIG_FILE"
+    CONFIG_FILE="$LOCAL_CONFIG_FILE" python3 - <<'PYEOF'
+import os
+import re
+
+path = os.environ["CONFIG_FILE"]
+target = 'Literal["fcfs", "priority", "value_greedy", "value_greedy_aging"]'
+with open(path) as f:
+    c = f.read()
+
+c, alias_count = re.subn(
+    r'SchedulerPolicy\s*=\s*Literal\[[^\]]*\]',
+    f'SchedulerPolicy = {target}',
+    c,
+)
+
+literal_patterns = [
+    r'Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*\]',
+    r'Literal\[\s*([\"\'])priority\1\s*,\s*([\"\'])fcfs\2\s*\]',
+    r'Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*,\s*([\"\'])value_greedy\3\s*\]',
+    r'Literal\[\s*([\"\'])priority\1\s*,\s*([\"\'])fcfs\2\s*,\s*([\"\'])value_greedy\3\s*\]',
+]
+literal_count = 0
+for pattern in literal_patterns:
+    c, count = re.subn(pattern, target, c)
+    literal_count += count
+
+with open(path, "w") as f:
+    f.write(c)
+
+if "value_greedy_aging" not in c:
+    raise SystemExit("local scheduler.py patch failed")
+print(
+    "local scheduler.py patched with regex OK "
+    f"(alias={alias_count}, literals={literal_count})"
+)
+PYEOF
+fi
