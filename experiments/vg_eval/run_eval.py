@@ -37,6 +37,7 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
 
     results = []
     experiment_start = time.time()
+    os.makedirs(output_dir, exist_ok=True)
 
     # Offset arrival times to wall clock
     trace_start = requests[0].arrival_time
@@ -59,6 +60,8 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
         params = SamplingParams(
             max_tokens=256,
             temperature=0.0,
+            priority=req.priority,
+            truncate_prompt_tokens=1700,
         )
 
         first_token_time = None
@@ -66,11 +69,20 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
         n_tokens = 0
         actual_arrival = time.time()
 
-        async for output in engine.generate(req.prompt, params, request_id=req.request_id):
+        try:
+            async for output in engine.generate(
+                req.prompt, params, request_id=req.request_id
+            ):
+                if first_token_time is None:
+                    first_token_time = time.time()
+                n_tokens = len(output.outputs[0].token_ids)
+                if output.finished:
+                    completion_time = time.time()
+        except Exception as e:
+            print(f"Request {req.request_id} failed: {e}", flush=True)
             if first_token_time is None:
                 first_token_time = time.time()
-            n_tokens = len(output.outputs[0].token_ids)
-            if output.finished:
+            if completion_time is None:
                 completion_time = time.time()
 
         results.append(
@@ -83,6 +95,26 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
                 num_output_tokens=n_tokens,
             )
         )
+        if len(results) % 100 == 0:
+            checkpoint_path = os.path.join(output_dir, f"checkpoint_{len(results)}.json")
+            with open(checkpoint_path, "w") as f:
+                json.dump(
+                    {
+                        "condition": condition,
+                        "n_completed": len(results),
+                        "results": [
+                            {
+                                "request_id": r.request_id,
+                                "sla_tier": r.sla_tier,
+                                "ttft_ms": r.ttft_ms,
+                                "e2e_ms": r.e2e_ms,
+                            }
+                            for r in results
+                        ],
+                    },
+                    f,
+                )
+            print(f"Checkpoint saved: {len(results)} requests", flush=True)
         print(
             f"  [{condition}] {req.request_id} "
             f"TTFT={results[-1].ttft_ms:.0f}ms "
@@ -93,11 +125,10 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
     # Submit all requests concurrently
     await asyncio.gather(*[submit_request(r) for r in requests])
 
-    # engine cleanup done automatically
+    pass  # engine cleanup handled automatically
 
     metrics = compute_metrics(results, condition, experiment_start)
 
-    os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, f"{condition}_results.json")
     with open(out_path, "w") as f:
         json.dump(
