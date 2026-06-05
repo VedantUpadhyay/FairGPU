@@ -29,7 +29,7 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
     engine_args = AsyncEngineArgs(
         model=model,
         scheduling_policy=condition,
-        max_model_len=1024,
+        max_model_len=2048,
         gpu_memory_utilization=0.85,
         enforce_eager=True,
     )
@@ -49,10 +49,17 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
         if target > now:
             await asyncio.sleep(target - now)
 
+        # Truncate prompt to be safe.
+        # opt-1.3b has 2048 context, reserve 256 for output.
+        MAX_PROMPT_CHARS = 7000  # ~1750 tokens
+        if len(req.prompt) > MAX_PROMPT_CHARS:
+            req.prompt = req.prompt[:MAX_PROMPT_CHARS]
+
         # Set priority via SamplingParams extra
         params = SamplingParams(
-            max_tokens=128,
+            max_tokens=256,
             temperature=0.0,
+            truncate_prompt_tokens=1700,
         )
 
         first_token_time = None
@@ -124,7 +131,7 @@ def main():
     )
     parser.add_argument("--n_interactive", type=int, default=300)
     parser.add_argument("--n_batch", type=int, default=700)
-    parser.add_argument("--model", default="facebook/opt-125m")
+    parser.add_argument("--model", default="facebook/opt-1.3b")
     parser.add_argument("--output_dir", default="experiments/vg_eval/results/")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()

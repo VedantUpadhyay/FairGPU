@@ -82,10 +82,12 @@ def load_mixed_trace(
         ds = load_dataset("ccdv/govreport-summarization", split="train", streaming=True)
         for item in ds:
             txt = item.get("report", "")
-            words = txt.split()
-            if len(words) > 200:
-                # Truncate to 800 words
-                batch_prompts.append(" ".join(words[:800]))
+            if len(txt.split()) > 200:
+                # Truncate to ~600 tokens worth of text.
+                # 600 tokens * 4 chars/token = 2400 chars.
+                if len(txt) > 2400:
+                    txt = txt[:2400]
+                batch_prompts.append(txt)
             if len(batch_prompts) >= n_batch * 3:
                 break
     except Exception as e:
@@ -105,6 +107,8 @@ def load_mixed_trace(
         while len(batch_prompts) < n_batch * 3:
             # Build ~600 word prompt
             para = " ".join(random.choices(sentences, k=60))
+            if len(para) > 2400:
+                para = para[:2400]
             batch_prompts.append(para)
 
     # --- Sample ---
