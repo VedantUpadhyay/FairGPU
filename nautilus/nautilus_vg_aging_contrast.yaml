@@ -1,0 +1,158 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fairgpu-vg-aging-contrast
+  namespace: systems-research-lab
+spec:
+  completions: 3
+  parallelism: 3
+  completionMode: Indexed
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - k8s-haosu-02
+                - k8s-haosu-03
+                - k8s-haosu-02.sdsc.optiputer.net
+                - k8s-haosu-03.sdsc.optiputer.net
+                - k8s-haosu-05.sdsc.optiputer.net
+                - k8s-haosu-06.sdsc.optiputer.net
+                - k8s-haosu-07.sdsc.optiputer.net
+                - k8s-haosu-09.sdsc.optiputer.net
+                - k8s-haosu-10.sdsc.optiputer.net
+                - k8s-haosu-11.sdsc.optiputer.net
+                - k8s-haosu-12.sdsc.optiputer.net
+                - k8s-haosu-15.sdsc.optiputer.net
+                - k8s-haosu-17.sdsc.optiputer.net
+                - k8s-haosu-18.sdsc.optiputer.net
+                - k8s-haosu-19.sdsc.optiputer.net
+                - k8s-haosu-21.sdsc.optiputer.net
+                - k8s-haosu-22.sdsc.optiputer.net
+                - k8s-haosu-23.sdsc.optiputer.net
+                - k8s-haosu-24.sdsc.optiputer.net
+                - k8s-haosu-25.sdsc.optiputer.net
+                - k8s-haosu-26.sdsc.optiputer.net
+                - k8s-haosu-27.sdsc.optiputer.net
+                - k8s-haosu-28.sdsc.optiputer.net
+                - k8s-haosu-29.sdsc.optiputer.net
+                - ry-gpu-02.sdsc.optiputer.net
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - NVIDIA-A10
+                - NVIDIA-GeForce-RTX-3090
+                - NVIDIA-GeForce-RTX-4090
+                - NVIDIA-L4
+                - NVIDIA-L40
+                - NVIDIA-L40S
+                - NVIDIA-RTX-4000-Ada-Generation
+                - NVIDIA-RTX-5000-Ada-Generation
+                - NVIDIA-RTX-A4000
+                - NVIDIA-RTX-A5000
+      initContainers:
+      - name: clone-repo
+        image: alpine/git
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          git clone --recurse-submodules \
+            https://github.com/VedantUpadhyay/FairGPU.git \
+            /workspace/FairGPU
+          cd /workspace/FairGPU
+          echo "Repo ready"
+          ls faircpu/value_curves.py
+          ls vllm/vllm/v1/core/sched/request_queue.py
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+        resources:
+          requests:
+            cpu: "2"
+            memory: "4Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+      containers:
+      - name: eval
+        image: vllm/vllm-openai:latest
+        command:
+        - bash
+        - -lc
+        - |
+          set -e
+          CONDITIONS=(fcfs value_greedy value_greedy_aging)
+          IDX=${JOB_COMPLETION_INDEX:-0}
+          CONDITION=${CONDITIONS[$IDX]}
+          echo "JOB_COMPLETION_INDEX=${JOB_COMPLETION_INDEX}"
+          echo "Condition will be: ${CONDITIONS[$JOB_COMPLETION_INDEX]}"
+          echo "=== Pod $IDX: condition=$CONDITION ==="
+
+          cd /workspace/FairGPU
+
+          # Install faircpu package
+          pip install -e . --quiet
+
+          # Install datasets
+          pip install datasets --quiet
+
+          # Now patch the pip-installed vllm
+          # (NOT the submodule - that caused the _C error)
+          bash patches/apply_vllm_patch.sh
+
+          # Do NOT add vllm submodule to PYTHONPATH
+          # Use pip-installed vllm only
+          export PYTHONPATH=/workspace/FairGPU:$PYTHONPATH
+
+          # Verify patch worked
+          python3 -c "
+          from vllm.v1.core.sched.request_queue import (
+              SchedulingPolicy, ValueGreedyRequestQueue)
+          print('Scheduler patch verified OK')
+          print('VALUE_GREEDY:', SchedulingPolicy.VALUE_GREEDY)
+          "
+
+          python3 experiments/vg_eval/run_eval.py \
+            --condition $CONDITION \
+            --n_requests 1000 \
+            --urgency_mode high_contrast \
+            --model facebook/opt-1.3b \
+            --output_dir /eval_outputs/aging_contrast/$CONDITION/
+
+          echo "=== $CONDITION complete ==="
+        env:
+        - name: VLLM_WORKER_MULTIPROC_METHOD
+          value: "spawn"
+        - name: VLLM_USE_V1
+          value: "0"
+        - name: CUDA_LAUNCH_BLOCKING
+          value: "1"
+        resources:
+          requests:
+            cpu: "8"
+            memory: "32Gi"
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "8"
+            memory: "32Gi"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+        - name: eval-out
+          mountPath: /eval_outputs
+      volumes:
+      - name: workspace
+        emptyDir: {}
+      - name: eval-out
+        persistentVolumeClaim:
+          claimName: fairgpu-eval-out-pvc

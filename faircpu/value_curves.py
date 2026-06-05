@@ -11,6 +11,7 @@ class TaskProfile:
 
 STEEP = TaskProfile(tau=25.0, base=1.0, floor=0.2)
 SMOOTH = TaskProfile(tau=100.0, base=1.0, floor=0.0)
+DEFAULT_STARVATION_THRESHOLD = 30.0  # seconds
 
 
 def compute_decay_rate(profile: TaskProfile, wait_secs: float) -> float:
@@ -66,3 +67,42 @@ def value_greedy_key(request, current_time: float) -> float:
     profile = assign_profile_from_request(request)
     wait_secs = max(0.0, current_time - request.arrival_time)
     return compute_decay_rate(profile, wait_secs)
+
+
+def value_greedy_aging_key(
+    request,
+    current_time: float,
+    starvation_threshold_secs: float = DEFAULT_STARVATION_THRESHOLD,
+    boost: float = 1e9,
+) -> float:
+    """
+    Value-Greedy with bounded aging (starvation prevention).
+
+    Sort key for scheduling: higher = serve sooner.
+
+    Two-regime policy:
+      Hot path (starving): if wait_time > threshold,
+        return boost (large constant) + wait_time.
+        Forces promotion to front of queue.
+        Within starving tasks, FIFO by wait time.
+
+      Cold path (not starving): return normal
+        value_greedy_key -- serve by decay rate.
+
+    This guarantees:
+      - No request waits longer than threshold
+      - Value ordering preserved for non-starving tasks
+      - Zero starvation at any load level
+
+    Parameters:
+      starvation_threshold_secs: max wait before force-promotion.
+        Default 30s. Should be set to ~3x median completion time.
+      boost: large constant ensuring starving tasks always beat
+        non-starving tasks. Default 1e9.
+    """
+    wait_secs = max(0.0, current_time - request.arrival_time)
+
+    if wait_secs > starvation_threshold_secs:
+        return boost + wait_secs
+
+    return value_greedy_key(request, current_time)

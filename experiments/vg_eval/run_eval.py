@@ -177,7 +177,7 @@ def main():
     parser = argparse.ArgumentParser(description="FairGPU VG Scheduler Eval")
     parser.add_argument(
         "--condition",
-        choices=["fcfs", "priority", "value_greedy"],
+        choices=["fcfs", "priority", "value_greedy", "value_greedy_aging"],
         required=True,
     )
     parser.add_argument("--n_interactive", type=int, default=300)
