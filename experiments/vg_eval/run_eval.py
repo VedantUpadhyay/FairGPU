@@ -56,12 +56,10 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
         if len(req.prompt) > MAX_PROMPT_CHARS:
             req.prompt = req.prompt[:MAX_PROMPT_CHARS]
 
-        # Set priority via SamplingParams extra
+        # Set sampling parameters for generation.
         params = SamplingParams(
             max_tokens=256,
             temperature=0.0,
-            priority=req.priority,
-            truncate_prompt_tokens=1700,
         )
 
         first_token_time = None
@@ -71,7 +69,10 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
 
         try:
             async for output in engine.generate(
-                req.prompt, params, request_id=req.request_id
+                req.prompt,
+                params,
+                request_id=req.request_id,
+                priority=req.priority,
             ):
                 if first_token_time is None:
                     first_token_time = time.time()
