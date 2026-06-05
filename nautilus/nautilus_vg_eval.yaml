@@ -71,7 +71,7 @@ spec:
             memory: "4Gi"
       containers:
       - name: eval
-        image: pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+        image: vllm/vllm-openai:latest
         command:
         - bash
         - -lc
@@ -88,9 +88,6 @@ spec:
 
           # Install faircpu package
           pip install -e . --quiet
-
-          # Install vllm from pip (provides compiled _C ext)
-          pip install vllm --quiet
 
           # Install datasets
           pip install datasets --quiet
