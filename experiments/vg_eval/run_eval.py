@@ -93,7 +93,7 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
     # Submit all requests concurrently
     await asyncio.gather(*[submit_request(r) for r in requests])
 
-    await engine.abort_all()
+    # engine cleanup done automatically
 
     metrics = compute_metrics(results, condition, experiment_start)
 
