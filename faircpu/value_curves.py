@@ -45,6 +45,16 @@ def assign_profile(request) -> TaskProfile:
     return SMOOTH
 
 
+def assign_profile_from_request(request) -> TaskProfile:
+    """
+    Use request.tau if available, else infer from priority/prompt length.
+    """
+    if hasattr(request, "tau") and request.tau > 0:
+        floor = 0.2 if request.tau < 50 else 0.0
+        return TaskProfile(tau=request.tau, base=1.0, floor=floor)
+    return assign_profile(request)
+
+
 def value_greedy_key(request, current_time: float) -> float:
     """
     Sort key for VALUE_GREEDY queue ordering.
@@ -53,6 +63,6 @@ def value_greedy_key(request, current_time: float) -> float:
              value_greedy_key(r, time.time()),
              reverse=True)
     """
-    profile = assign_profile(request)
+    profile = assign_profile_from_request(request)
     wait_secs = max(0.0, current_time - request.arrival_time)
     return compute_decay_rate(profile, wait_secs)

@@ -15,6 +15,26 @@ from experiments.vg_eval.metrics import (
 )
 
 
+def configure_urgency_mode(urgency_mode: str) -> None:
+    """
+    Configure in-process value-curve tau values for this eval run.
+    """
+    from faircpu import value_curves
+
+    if urgency_mode == "high_contrast":
+        value_curves.STEEP.tau = 5.0
+        value_curves.SMOOTH.tau = 500.0
+    else:
+        value_curves.STEEP.tau = 25.0
+        value_curves.SMOOTH.tau = 100.0
+    print(
+        f"Urgency mode: {urgency_mode} "
+        f"(STEEP tau={value_curves.STEEP.tau}, "
+        f"SMOOTH tau={value_curves.SMOOTH.tau})",
+        flush=True,
+    )
+
+
 async def run_condition(condition: str, requests, model: str, output_dir: str):
     """
     Run one scheduling condition against the mixed trace.
@@ -162,16 +182,27 @@ def main():
     )
     parser.add_argument("--n_interactive", type=int, default=300)
     parser.add_argument("--n_batch", type=int, default=700)
+    parser.add_argument("--n_requests", type=int, default=1000)
+    parser.add_argument(
+        "--urgency_mode",
+        choices=["standard", "high_contrast"],
+        default="standard",
+    )
     parser.add_argument("--model", default="facebook/opt-1.3b")
     parser.add_argument("--output_dir", default="experiments/vg_eval/results/")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
+    configure_urgency_mode(args.urgency_mode)
+    n_interactive = int(args.n_requests * 0.3)
+    n_batch = int(args.n_requests * 0.7)
+
     # Load trace
     requests = load_mixed_trace(
-        n_interactive=args.n_interactive,
-        n_batch=args.n_batch,
+        n_interactive=n_interactive,
+        n_batch=n_batch,
         seed=args.seed,
+        urgency_mode=args.urgency_mode,
     )
 
     # Run condition

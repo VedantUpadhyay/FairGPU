@@ -11,10 +11,14 @@ class TraceRequest:
     sla_tier: str
     arrival_time: float
     priority: int
+    tau: float = 25.0
 
 
 def load_mixed_trace(
-    n_interactive: int = 300, n_batch: int = 700, seed: int = 42
+    n_interactive: int = 300,
+    n_batch: int = 700,
+    seed: int = 42,
+    urgency_mode: str = "standard",
 ) -> list[TraceRequest]:
     """
     Returns mixed trace sorted by arrival_time.
@@ -27,6 +31,12 @@ def load_mixed_trace(
     """
     rng = np.random.default_rng(seed)
     random.seed(seed)
+    if urgency_mode == "high_contrast":
+        steep_tau = 5.0
+        smooth_tau = 500.0
+    else:
+        steep_tau = 25.0
+        smooth_tau = 100.0
 
     # --- Load interactive prompts ---
     interactive_prompts = []
@@ -141,6 +151,7 @@ def load_mixed_trace(
                 sla_tier=tier,
                 arrival_time=arrival_times[rank],
                 priority=priority,
+                tau=steep_tau if tier == "interactive" else smooth_tau,
             )
         )
 
