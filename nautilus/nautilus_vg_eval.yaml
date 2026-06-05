@@ -44,6 +44,19 @@ spec:
                 - k8s-haosu-28.sdsc.optiputer.net
                 - k8s-haosu-29.sdsc.optiputer.net
                 - ry-gpu-02.sdsc.optiputer.net
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - NVIDIA-A10
+                - NVIDIA-GeForce-RTX-3090
+                - NVIDIA-GeForce-RTX-4090
+                - NVIDIA-L4
+                - NVIDIA-L40
+                - NVIDIA-L40S
+                - NVIDIA-RTX-4000-Ada-Generation
+                - NVIDIA-RTX-5000-Ada-Generation
+                - NVIDIA-RTX-A4000
+                - NVIDIA-RTX-A5000
       initContainers:
       - name: clone-repo
         image: alpine/git
@@ -119,6 +132,10 @@ spec:
         env:
         - name: VLLM_WORKER_MULTIPROC_METHOD
           value: "spawn"
+        - name: VLLM_USE_V1
+          value: "0"
+        - name: CUDA_LAUNCH_BLOCKING
+          value: "1"
         resources:
           requests:
             cpu: "8"
