@@ -194,6 +194,7 @@ def main():
             "chunked_prefill_fcfs",
             "value_greedy",
             "value_greedy_aging",
+            "value_greedy_backpressure",
         ],
         required=True,
     )

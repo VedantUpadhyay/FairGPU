@@ -113,3 +113,28 @@ def test_aging_fifo_among_starving():
     )
 
     assert key_older > key_newer, "Longer-waiting starving task served first"
+
+
+def test_backpressure_stages_prefills():
+    """Under memory pressure, new requests are staged."""
+    from vllm.v1.core.sched.request_queue import ValueGreedyBackpressureRequestQueue
+
+    q = ValueGreedyBackpressureRequestQueue(memory_threshold=0.85)
+
+    q.set_memory_pressure(True)
+
+    class FakePrefill:
+        arrival_time = __import__("time").time() - 1
+        priority = 1
+        num_prompt_tokens = 100
+        num_computed_tokens = 0
+        request_id = "prefill-1"
+
+    q.add_request(FakePrefill())
+    assert len(q._queue) == 0
+    assert len(q._staging) == 1
+
+    q.set_memory_pressure(False)
+    assert len(q._queue) == 1
+    assert len(q._staging) == 0
+    print("Backpressure staging test PASSED")

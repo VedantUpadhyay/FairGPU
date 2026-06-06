@@ -1,97 +1,30 @@
 #!/bin/bash
-# Apply FairGPU value_greedy patch to the
-# pip-installed vllm package (not the submodule).
-# Run after: pip install vllm
+# Apply FairGPU scheduler patches to vLLM.
+# Run from FairGPU root after the repo is cloned.
 
 set -e
 
-# Find pip-installed vllm location. A checked-out vllm/
-# submodule can appear as a namespace package with
-# __file__ = None, so search site-packages explicitly.
-VLLM_PKG=$(python3 - <<'PYEOF'
+python3 - <<'PYEOF'
 import os
+import re
 import site
 import sys
 
-search_roots = []
-try:
-    search_roots.extend(site.getsitepackages())
-except AttributeError:
-    pass
-try:
-    search_roots.append(site.getusersitepackages())
-except AttributeError:
-    pass
-search_roots.extend(p for p in sys.path if "site-packages" in p)
 
-seen = set()
-for root in search_roots:
-    if not root or root in seen:
-        continue
-    seen.add(root)
-    candidate = os.path.join(root, "vllm", "__init__.py")
-    if os.path.exists(candidate):
-        print(os.path.join(root, "vllm"))
-        raise SystemExit(0)
+FAIRGPU_ROOTS = [
+    "/workspace/FairGPU",
+    os.getcwd(),
+]
 
-raise SystemExit(0)
-PYEOF
-)
 
-if [ -n "$VLLM_PKG" ]; then
-echo "Patching pip-installed vllm at: $VLLM_PKG"
+REQUEST_QUEUE_IMPORT = """from faircpu.value_curves import (
+    DEFAULT_STARVATION_THRESHOLD,
+    value_greedy_aging_key,
+    value_greedy_key,
+)"""
 
-# Patch 1: Add value_greedy to SchedulingPolicy enum
-# and add ValueGreedyRequestQueue class
-QUEUE_FILE="$VLLM_PKG/v1/core/sched/request_queue.py"
-echo "Patching $QUEUE_FILE"
 
-python3 - <<PYEOF
-import re
-
-with open("$QUEUE_FILE", "r") as f:
-    content = f.read()
-
-# Add import at top
-if "from faircpu.value_curves import" not in content:
-    content = content.replace(
-        "import heapq",
-        "import heapq\nimport time as _time\n"
-        "import sys, os as _os\n"
-        "sys.path.insert(0, '/workspace/FairGPU')\n"
-        "from faircpu.value_curves import (\n"
-        "    DEFAULT_STARVATION_THRESHOLD,\n"
-        "    value_greedy_aging_key,\n"
-        "    value_greedy_key,\n"
-        ")\n",
-    )
-elif "value_greedy_aging_key" not in content:
-    content = content.replace(
-        "from faircpu.value_curves import value_greedy_key",
-        "from faircpu.value_curves import (\n"
-        "    DEFAULT_STARVATION_THRESHOLD,\n"
-        "    value_greedy_aging_key,\n"
-        "    value_greedy_key,\n"
-        ")",
-    )
-
-# Add enum value after PRIORITY
-if "VALUE_GREEDY" not in content:
-    content = content.replace(
-        '    PRIORITY = "priority"',
-        '    PRIORITY = "priority"\n'
-        '    VALUE_GREEDY = "value_greedy"'
-    )
-if "VALUE_GREEDY_AGING" not in content:
-    content = content.replace(
-        '    VALUE_GREEDY = "value_greedy"',
-        '    VALUE_GREEDY = "value_greedy"\n'
-        '    VALUE_GREEDY_AGING = "value_greedy_aging"'
-    )
-
-# Add ValueGreedyRequestQueue class before
-# create_request_queue function
-vgq_class = """
+VALUE_GREEDY_CLASS = """
 
 class ValueGreedyRequestQueue(RequestQueue):
     \"\"\"Schedule by descending value decay rate.\"\"\"
@@ -162,13 +95,8 @@ class ValueGreedyRequestQueue(RequestQueue):
 
 """
 
-if "class ValueGreedyRequestQueue" not in content:
-    content = content.replace(
-        "def create_request_queue(",
-        vgq_class + "def create_request_queue("
-    )
 
-vgaq_class = """
+VALUE_GREEDY_AGING_CLASS = """
 
 class ValueGreedyAgingRequestQueue(RequestQueue):
     \"\"\"
@@ -247,160 +175,360 @@ class ValueGreedyAgingRequestQueue(RequestQueue):
 
 """
 
-if "class ValueGreedyAgingRequestQueue" not in content:
-    content = content.replace(
-        "def create_request_queue(",
-        vgaq_class + "def create_request_queue("
-    )
 
-# Add branch in create_request_queue
-if "SchedulingPolicy.VALUE_GREEDY:" not in content:
-    content = content.replace(
-        '    elif policy == SchedulingPolicy.FCFS:',
-        '    elif policy == SchedulingPolicy.VALUE_GREEDY:\n'
-        '        return ValueGreedyRequestQueue()\n'
-        '    elif policy == SchedulingPolicy.FCFS:'
-    )
-if "SchedulingPolicy.VALUE_GREEDY_AGING:" not in content:
-    content = content.replace(
-        '    elif policy == SchedulingPolicy.FCFS:',
-        '    elif policy == SchedulingPolicy.VALUE_GREEDY_AGING:\n'
-        '        return ValueGreedyAgingRequestQueue()\n'
-        '    elif policy == SchedulingPolicy.FCFS:'
-    )
+VALUE_GREEDY_BACKPRESSURE_CLASS = """
 
-with open("$QUEUE_FILE", "w") as f:
-    f.write(content)
+class ValueGreedyBackpressureRequestQueue(RequestQueue):
+    \"\"\"
+    Value-Greedy with memory-aware admission control.
 
-print("request_queue.py patched OK")
-PYEOF
+    When KV cache utilization exceeds threshold, new prefill
+    requests are held in a staging queue and admitted when
+    pressure drops.
+    \"\"\"
 
-# Patch 2: Add value_greedy to SchedulerPolicy Literal
-CONFIG_FILE="$VLLM_PKG/config/scheduler.py"
-echo "Patching $CONFIG_FILE"
-CONFIG_FILE="$CONFIG_FILE" python3 - <<'PYEOF'
-import os
-import re
-path = os.environ["CONFIG_FILE"]
-target = 'Literal["fcfs", "priority", "value_greedy", "value_greedy_aging"]'
-with open(path) as f:
-    c = f.read()
+    def __init__(self,
+                 memory_threshold: float = 0.85,
+                 starvation_threshold: float = 30.0,
+                 boost: float = 1e9) -> None:
+        self._queue: list = []
+        self._staging: list = []
+        self._memory_threshold = memory_threshold
+        self._starvation_threshold = starvation_threshold
+        self._boost = boost
+        self._memory_pressure = False
 
-c, alias_count = re.subn(
-    r'SchedulerPolicy\s*=\s*Literal\[[^\]]*\]',
-    f'SchedulerPolicy = {target}',
-    c,
+    def set_memory_pressure(self, high_pressure: bool) -> None:
+        \"\"\"Called by scheduler with current KV state.\"\"\"
+        self._memory_pressure = high_pressure
+        if high_pressure:
+            held = [r for r in self._queue if self._is_prefill(r)]
+            if held:
+                held_set = set(held)
+                self._queue = [r for r in self._queue
+                               if r not in held_set]
+                self._staging.extend(held)
+        elif self._staging:
+            self._queue.extend(self._staging)
+            self._staging.clear()
+            self._sort()
+
+    def _is_prefill(self, request) -> bool:
+        return (hasattr(request, 'num_computed_tokens')
+                and request.num_computed_tokens == 0)
+
+    def _sort(self) -> None:
+        now = _time.time()
+        self._queue.sort(
+            key=lambda r: value_greedy_aging_key(
+                r, now,
+                starvation_threshold_secs=
+                    self._starvation_threshold,
+                boost=self._boost),
+            reverse=True)
+
+    def add_request(self, request) -> None:
+        if self._memory_pressure and self._is_prefill(request):
+            self._staging.append(request)
+        else:
+            self._queue.append(request)
+            self._sort()
+
+    def pop_request(self):
+        if not self._queue:
+            raise IndexError(
+                "pop from empty BackpressureQueue")
+        self._sort()
+        return self._queue.pop(0)
+
+    def peek_request(self):
+        if not self._queue:
+            raise IndexError(
+                "peek from empty BackpressureQueue")
+        self._sort()
+        return self._queue[0]
+
+    def prepend_request(self, request) -> None:
+        self.add_request(request)
+
+    def prepend_requests(self, requests) -> None:
+        for r in requests:
+            self.add_request(r)
+
+    def remove_request(self, request) -> None:
+        try:
+            self._queue.remove(request)
+        except ValueError:
+            self._staging.remove(request)
+
+    def remove_requests(self, requests) -> None:
+        rs = set(requests)
+        self._queue = [r for r in self._queue
+                       if r not in rs]
+        self._staging = [r for r in self._staging
+                         if r not in rs]
+
+    def add(self, request) -> None:
+        self.add_request(request)
+
+    def pop(self):
+        return self.pop_request()
+
+    def peek(self):
+        if not self._queue:
+            return None
+        return self.peek_request()
+
+    def __len__(self) -> int:
+        return len(self._queue) + len(self._staging)
+
+    def __iter__(self):
+        self._sort()
+        return iter(self._queue + self._staging)
+
+    def __bool__(self) -> bool:
+        # Only the main queue is schedulable. Staged requests are
+        # counted by __len__ but should not drive scheduler popping.
+        return bool(self._queue)
+
+"""
+
+
+POLICY_LITERAL = (
+    'Literal["fcfs", "priority", "value_greedy", '
+    '"value_greedy_aging", "value_greedy_backpressure"]'
+)
+CHOICES_LITERAL = (
+    '["fcfs", "priority", "value_greedy", '
+    '"value_greedy_aging", "value_greedy_backpressure"]'
 )
 
-literal_patterns = [
-    r'Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*\]',
-    r'Literal\[\s*([\"\'])priority\1\s*,\s*([\"\'])fcfs\2\s*\]',
-    r'Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*,\s*([\"\'])value_greedy\3\s*\]',
-    r'Literal\[\s*([\"\'])priority\1\s*,\s*([\"\'])fcfs\2\s*,\s*([\"\'])value_greedy\3\s*\]',
-]
-literal_count = 0
-for pattern in literal_patterns:
-    c, count = re.subn(pattern, target, c)
-    literal_count += count
 
-with open(path, 'w') as f:
-    f.write(c)
+def read(path: str) -> str:
+    with open(path) as f:
+        return f.read()
 
-if 'value_greedy_aging' not in c:
-    raise SystemExit('scheduler.py patch failed: value_greedy_aging missing')
-print(
-    'scheduler.py patched with regex OK '
-    f'(alias={alias_count}, literals={literal_count})'
-)
-PYEOF
 
-# Patch 3: Add value_greedy to arg_utils choices
-ARG_FILE="$VLLM_PKG/../vllm/engine/arg_utils.py"
-ARG_FILE2="$VLLM_PKG/engine/arg_utils.py"
-for F in $ARG_FILE $ARG_FILE2; do
-    if [ -f "$F" ]; then
-        python3 -c "
-with open('$F') as f:
-    c = f.read()
-if 'value_greedy_aging' in c:
-    print('arg_utils.py already patched')
-else:
-    if '[\"fcfs\", \"priority\", \"value_greedy\"]' in c:
-        c = c.replace(
-            '[\"fcfs\", \"priority\", \"value_greedy\"]',
-            '[\"fcfs\", \"priority\", \"value_greedy\", '
-            '\"value_greedy_aging\"]'
+def write(path: str, content: str) -> None:
+    with open(path, "w") as f:
+        f.write(content)
+
+
+def find_vllm_roots() -> list[str]:
+    roots: list[str] = []
+    search_roots: list[str] = []
+    try:
+        search_roots.extend(site.getsitepackages())
+    except AttributeError:
+        pass
+    try:
+        search_roots.append(site.getusersitepackages())
+    except AttributeError:
+        pass
+    search_roots.extend(p for p in sys.path if "site-packages" in p)
+
+    for root in search_roots:
+        candidate = os.path.join(root, "vllm", "__init__.py")
+        if os.path.exists(candidate):
+            roots.append(os.path.join(root, "vllm"))
+
+    local_root = os.path.join(os.getcwd(), "vllm", "vllm")
+    if os.path.exists(os.path.join(local_root, "__init__.py")):
+        roots.append(local_root)
+
+    deduped = []
+    for root in roots:
+        if root not in deduped:
+            deduped.append(root)
+    return deduped
+
+
+def patch_request_queue(root: str) -> None:
+    path = os.path.join(root, "v1", "core", "sched", "request_queue.py")
+    if not os.path.exists(path):
+        return
+    content = read(path)
+
+    if "import time as _time" not in content:
+        content = content.replace("import heapq\n", "import heapq\nimport time as _time\n")
+
+    if "from faircpu.value_curves import" in content:
+        content = re.sub(
+            r"from faircpu\.value_curves import(?: \([^)]+\)| [^\n]+)",
+            REQUEST_QUEUE_IMPORT,
+            content,
+            count=1,
+            flags=re.S,
         )
     else:
-        c = c.replace(
-            '[\"fcfs\", \"priority\"]',
-            '[\"fcfs\", \"priority\", \"value_greedy\", '
-            '\"value_greedy_aging\"]'
+        content = content.replace(
+            "from vllm.v1.request import Request\n",
+            REQUEST_QUEUE_IMPORT + "\n\nfrom vllm.v1.request import Request\n",
         )
-    with open('$F', 'w') as f:
-        f.write(c)
-    print('arg_utils.py patched OK')
-"
-    fi
-done
 
-echo "All patches applied to pip vllm at $VLLM_PKG"
+    if "VALUE_GREEDY" not in content:
+        content = content.replace(
+            '    PRIORITY = "priority"',
+            '    PRIORITY = "priority"\n'
+            '    VALUE_GREEDY = "value_greedy"',
+        )
+    if "VALUE_GREEDY_AGING" not in content:
+        content = content.replace(
+            '    VALUE_GREEDY = "value_greedy"',
+            '    VALUE_GREEDY = "value_greedy"\n'
+            '    VALUE_GREEDY_AGING = "value_greedy_aging"',
+        )
+    if "VALUE_GREEDY_BACKPRESSURE" not in content:
+        content = content.replace(
+            '    VALUE_GREEDY_AGING = "value_greedy_aging"',
+            '    VALUE_GREEDY_AGING = "value_greedy_aging"\n'
+            '    VALUE_GREEDY_BACKPRESSURE = "value_greedy_backpressure"',
+        )
 
-# Verify pip-installed vllm patch.
-python3 -c "
+    insert = ""
+    if "class ValueGreedyRequestQueue" not in content:
+        insert += VALUE_GREEDY_CLASS
+    if "class ValueGreedyAgingRequestQueue" not in content:
+        insert += VALUE_GREEDY_AGING_CLASS
+    if "class ValueGreedyBackpressureRequestQueue" not in content:
+        insert += VALUE_GREEDY_BACKPRESSURE_CLASS
+    if insert:
+        content = content.replace("def create_request_queue(", insert + "def create_request_queue(")
+
+    if "SchedulingPolicy.VALUE_GREEDY:" not in content:
+        content = content.replace(
+            '    elif policy == SchedulingPolicy.FCFS:',
+            '    elif policy == SchedulingPolicy.VALUE_GREEDY:\n'
+            '        return ValueGreedyRequestQueue()\n'
+            '    elif policy == SchedulingPolicy.FCFS:',
+        )
+    if "SchedulingPolicy.VALUE_GREEDY_AGING:" not in content:
+        content = content.replace(
+            '    elif policy == SchedulingPolicy.FCFS:',
+            '    elif policy == SchedulingPolicy.VALUE_GREEDY_AGING:\n'
+            '        return ValueGreedyAgingRequestQueue()\n'
+            '    elif policy == SchedulingPolicy.FCFS:',
+        )
+    if "SchedulingPolicy.VALUE_GREEDY_BACKPRESSURE:" not in content:
+        content = content.replace(
+            '    elif policy == SchedulingPolicy.FCFS:',
+            '    elif policy == SchedulingPolicy.VALUE_GREEDY_BACKPRESSURE:\n'
+            '        return ValueGreedyBackpressureRequestQueue()\n'
+            '    elif policy == SchedulingPolicy.FCFS:',
+        )
+
+    write(path, content)
+    print(f"request_queue.py patched OK: {path}")
+
+
+def patch_scheduler_config(root: str) -> None:
+    path = os.path.join(root, "config", "scheduler.py")
+    if not os.path.exists(path):
+        return
+    content = read(path)
+    content, alias_count = re.subn(
+        r"SchedulerPolicy\s*=\s*Literal\[[^\]]*\]",
+        f"SchedulerPolicy = {POLICY_LITERAL}",
+        content,
+    )
+    literal_patterns = [
+        r"Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*\]",
+        r"Literal\[\s*([\"\'])priority\1\s*,\s*([\"\'])fcfs\2\s*\]",
+        r"Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*,\s*([\"\'])value_greedy\3\s*\]",
+        r"Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*,\s*([\"\'])value_greedy\3\s*,\s*([\"\'])value_greedy_aging\4\s*\]",
+    ]
+    literal_count = 0
+    for pattern in literal_patterns:
+        content, count = re.subn(pattern, POLICY_LITERAL, content)
+        literal_count += count
+    if "value_greedy_backpressure" not in content:
+        raise SystemExit(f"scheduler.py patch failed: {path}")
+    write(path, content)
+    print(
+        f"scheduler.py patched with regex OK: {path} "
+        f"(alias={alias_count}, literals={literal_count})"
+    )
+
+
+def patch_arg_utils(root: str) -> None:
+    candidates = [
+        os.path.join(root, "engine", "arg_utils.py"),
+        os.path.join(os.path.dirname(root), "vllm", "engine", "arg_utils.py"),
+    ]
+    for path in candidates:
+        if not os.path.exists(path):
+            continue
+        content = read(path)
+        for old in [
+            '["fcfs", "priority"]',
+            '["fcfs", "priority", "value_greedy"]',
+            '["fcfs", "priority", "value_greedy", "value_greedy_aging"]',
+        ]:
+            content = content.replace(old, CHOICES_LITERAL)
+        if "value_greedy_backpressure" not in content:
+            print(f"WARNING: arg_utils.py choices not found in {path}")
+        write(path, content)
+        print(f"arg_utils.py patched OK: {path}")
+
+
+def patch_scheduler_loop(root: str) -> None:
+    path = os.path.join(root, "v1", "core", "sched", "scheduler.py")
+    if not os.path.exists(path):
+        return
+    content = read(path)
+    marker = "Signal memory pressure to backpressure queues."
+    if marker in content:
+        print(f"scheduler.py memory-pressure hook already present: {path}")
+        return
+    needle = "        self.kv_cache_manager.new_step_starts()\n"
+    hook = (
+        "        self.kv_cache_manager.new_step_starts()\n\n"
+        "        # Signal memory pressure to backpressure queues.\n"
+        "        kv_cache_usage = self.kv_cache_manager.usage\n"
+        "        for request_queue in (self.waiting, self.skipped_waiting):\n"
+        "            if hasattr(request_queue, \"set_memory_pressure\"):\n"
+        "                request_queue.set_memory_pressure(kv_cache_usage > 0.85)\n"
+    )
+    if needle not in content:
+        raise SystemExit(f"Could not find KV step hook point in {path}")
+    content = content.replace(needle, hook, 1)
+    write(path, content)
+    print(f"scheduler.py memory-pressure hook patched OK: {path}")
+
+
+roots = find_vllm_roots()
+if not roots:
+    raise SystemExit("No vLLM package roots found")
+
+for root in roots:
+    print(f"Patching vLLM root: {root}")
+    patch_request_queue(root)
+    patch_scheduler_config(root)
+    patch_arg_utils(root)
+    patch_scheduler_loop(root)
+
+print("All FairGPU vLLM patches applied.")
+PYEOF
+
+python3 - <<'PYEOF'
 import sys
-sys.path.insert(0, '/workspace/FairGPU')
+
+sys.path.insert(0, "/workspace/FairGPU")
+sys.path.insert(0, "vllm")
+
+from vllm.config.scheduler import SchedulerPolicy
 from vllm.v1.core.sched.request_queue import (
-    SchedulingPolicy, ValueGreedyAgingRequestQueue,
-    ValueGreedyRequestQueue)
-print('Verification OK:',
-      SchedulingPolicy.VALUE_GREEDY,
-      SchedulingPolicy.VALUE_GREEDY_AGING)
-"
-else
-echo "No pip-installed vllm package found; skipping pip patch"
-fi
-
-# Mirror the scheduler.py Literal patch into the local
-# submodule when present so local verification with
-# sys.path.insert(0, "vllm") observes the same policy.
-LOCAL_CONFIG_FILE="./vllm/vllm/config/scheduler.py"
-if [ -f "$LOCAL_CONFIG_FILE" ]; then
-    echo "Patching local submodule $LOCAL_CONFIG_FILE"
-    CONFIG_FILE="$LOCAL_CONFIG_FILE" python3 - <<'PYEOF'
-import os
-import re
-
-path = os.environ["CONFIG_FILE"]
-target = 'Literal["fcfs", "priority", "value_greedy", "value_greedy_aging"]'
-with open(path) as f:
-    c = f.read()
-
-c, alias_count = re.subn(
-    r'SchedulerPolicy\s*=\s*Literal\[[^\]]*\]',
-    f'SchedulerPolicy = {target}',
-    c,
+    SchedulingPolicy,
+    ValueGreedyAgingRequestQueue,
+    ValueGreedyBackpressureRequestQueue,
+    ValueGreedyRequestQueue,
 )
 
-literal_patterns = [
-    r'Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*\]',
-    r'Literal\[\s*([\"\'])priority\1\s*,\s*([\"\'])fcfs\2\s*\]',
-    r'Literal\[\s*([\"\'])fcfs\1\s*,\s*([\"\'])priority\2\s*,\s*([\"\'])value_greedy\3\s*\]',
-    r'Literal\[\s*([\"\'])priority\1\s*,\s*([\"\'])fcfs\2\s*,\s*([\"\'])value_greedy\3\s*\]',
-]
-literal_count = 0
-for pattern in literal_patterns:
-    c, count = re.subn(pattern, target, c)
-    literal_count += count
-
-with open(path, "w") as f:
-    f.write(c)
-
-if "value_greedy_aging" not in c:
-    raise SystemExit("local scheduler.py patch failed")
+print("Verification OK:", SchedulerPolicy)
 print(
-    "local scheduler.py patched with regex OK "
-    f"(alias={alias_count}, literals={literal_count})"
+    "Queues OK:",
+    SchedulingPolicy.VALUE_GREEDY,
+    SchedulingPolicy.VALUE_GREEDY_AGING,
+    SchedulingPolicy.VALUE_GREEDY_BACKPRESSURE,
 )
 PYEOF
-fi
