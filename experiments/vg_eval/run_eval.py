@@ -46,13 +46,24 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
     print(f"\nStarting condition: {condition}")
     print(f"Model: {model}, " f"Requests: {len(requests)}")
 
-    engine_args = AsyncEngineArgs(
-        model=model,
-        scheduling_policy=condition,
-        max_model_len=2048,
-        gpu_memory_utilization=0.85,
-        enforce_eager=True,
-    )
+    if condition == "chunked_prefill_fcfs":
+        engine_args = AsyncEngineArgs(
+            model=model,
+            scheduling_policy="fcfs",
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=512,
+            max_model_len=2048,
+            gpu_memory_utilization=0.85,
+            enforce_eager=True,
+        )
+    else:
+        engine_args = AsyncEngineArgs(
+            model=model,
+            scheduling_policy=condition,
+            max_model_len=2048,
+            gpu_memory_utilization=0.85,
+            enforce_eager=True,
+        )
     engine = AsyncLLMEngine.from_engine_args(engine_args)
 
     results = []
@@ -177,7 +188,13 @@ def main():
     parser = argparse.ArgumentParser(description="FairGPU VG Scheduler Eval")
     parser.add_argument(
         "--condition",
-        choices=["fcfs", "priority", "value_greedy", "value_greedy_aging"],
+        choices=[
+            "fcfs",
+            "priority",
+            "chunked_prefill_fcfs",
+            "value_greedy",
+            "value_greedy_aging",
+        ],
         required=True,
     )
     parser.add_argument("--n_interactive", type=int, default=300)
