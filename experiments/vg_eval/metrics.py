@@ -2,6 +2,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
+INTERACTIVE_STARVATION_MS = 2000.0
+BATCH_STARVATION_MS = 120000.0
+
 
 @dataclass
 class RequestResult:
@@ -40,11 +43,9 @@ def compute_metrics(
     i_ttft = [r.ttft_ms for r in interactive]
     b_e2e = [r.e2e_ms for r in batch]
 
-    # Starvation: interactive TTFT > 3 * median TTFT
-    median_ttft = percentile(i_ttft, 50) if i_ttft else 0.0
-    threshold = 3 * median_ttft
-    starved = sum(1 for t in i_ttft if t > threshold)
-    starvation_rate = starved / len(i_ttft) if i_ttft else 0.0
+    i_starved = sum(1 for t in i_ttft if t > INTERACTIVE_STARVATION_MS)
+    b_starved = sum(1 for t in b_e2e if t > BATCH_STARVATION_MS)
+    starvation_rate = (i_starved + b_starved) / len(results) if results else 0.0
 
     # Throughput
     if results:
@@ -64,7 +65,11 @@ def compute_metrics(
         "batch_p99_e2e_ms": percentile(b_e2e, 99),
         "throughput_rps": round(throughput, 3),
         "starvation_rate": round(starvation_rate, 4),
-        "median_ttft_ms": round(median_ttft, 2),
+        "interactive_starvation_rate": (
+            i_starved / len(interactive) if interactive else 0.0
+        ),
+        "batch_starvation_rate": b_starved / len(batch) if batch else 0.0,
+        "median_ttft_ms": round(percentile(i_ttft, 50), 2),
     }
 
 
