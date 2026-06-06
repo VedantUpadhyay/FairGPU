@@ -53,7 +53,7 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
             enable_chunked_prefill=True,
             max_num_batched_tokens=512,
             max_model_len=2048,
-            gpu_memory_utilization=0.85,
+            gpu_memory_utilization=0.90,
             enforce_eager=True,
         )
     else:
@@ -61,7 +61,7 @@ async def run_condition(condition: str, requests, model: str, output_dir: str):
             model=model,
             scheduling_policy=condition,
             max_model_len=2048,
-            gpu_memory_utilization=0.85,
+            gpu_memory_utilization=0.90,
             enforce_eager=True,
         )
     engine = AsyncLLMEngine.from_engine_args(engine_args)
