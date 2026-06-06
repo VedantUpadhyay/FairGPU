@@ -511,11 +511,38 @@ print("All FairGPU vLLM patches applied.")
 PYEOF
 
 python3 - <<'PYEOF'
+import os
+import site
 import sys
 
-sys.path.insert(0, "/workspace/FairGPU")
-sys.path.insert(0, "vllm")
+# Prefer the prebuilt pip-installed vLLM over the cloned
+# source submodule. The source tree lacks vllm._C inside
+# the official Docker image and must not win import order.
+site_paths = []
+try:
+    site_paths.extend(site.getsitepackages())
+except AttributeError:
+    pass
+try:
+    site_paths.append(site.getusersitepackages())
+except AttributeError:
+    pass
+site_paths.extend(p for p in sys.path if "site-packages" in p)
+site_paths = [p for p in dict.fromkeys(site_paths) if p]
 
+cwd = os.getcwd()
+local_vllm_paths = {
+    "vllm",
+    os.path.join(cwd, "vllm"),
+    "/workspace/FairGPU/vllm",
+}
+remaining = [
+    p for p in sys.path
+    if p not in site_paths and p not in local_vllm_paths
+]
+sys.path = site_paths + remaining
+
+import vllm
 from vllm.config.scheduler import SchedulerPolicy
 from vllm.v1.core.sched.request_queue import (
     SchedulingPolicy,
@@ -524,6 +551,7 @@ from vllm.v1.core.sched.request_queue import (
     ValueGreedyRequestQueue,
 )
 
+print("Verification vLLM path:", getattr(vllm, "__file__", None))
 print("Verification OK:", SchedulerPolicy)
 print(
     "Queues OK:",
