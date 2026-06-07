@@ -32,11 +32,11 @@ from typing import Any, Optional
 
 # ─────────────────────────────────────────────────────────────
 # Empirical service rates from FairGPU experiments
-# (requests per second, measured on Nautilus A10 GPU)
+# (requests per second, measured on Nautilus GPU cluster)
 # ─────────────────────────────────────────────────────────────
 
 EMPIRICAL_MU = {
-    # (model, scheduler) -> measured throughput (rps)
+    # (model, scheduler) -> measured throughput on A10 (default GPU)
     # Source: FairGPU Nautilus experiments, June 2026
     ("opt-1.3b", "fcfs"):              7.472,
     ("opt-1.3b", "chunked_fcfs"):      8.228,
@@ -45,18 +45,32 @@ EMPIRICAL_MU = {
     ("opt-6.7b", "fcfs"):              2.876,
     ("opt-6.7b", "value_greedy"):      2.760,
     ("opt-6.7b", "value_greedy_aging"): 1.517,  # saturated — not useful
+    # (model, scheduler, gpu_type) -> measured throughput on specific GPU
+    # L40 48GB: scheduler advantage vanishes — KV cache not constrained
+    ("opt-1.3b", "fcfs",               "L40"): 9.152,
+    ("opt-1.3b", "value_greedy_aging",  "L40"): 9.156,
 }
 
 # GPU hardware costs (USD per GPU-hour, cloud on-demand, mid-2026)
 GPU_COST_PER_HOUR = {
-    "A10":  1.20,   # NVIDIA A10 24GB — used in experiments
+    "A10":  1.20,   # NVIDIA A10 24GB
+    "L40":  1.58,   # NVIDIA L40 48GB
     "A100": 3.00,   # NVIDIA A100 80GB
     "H100": 3.93,   # NVIDIA H100 SXM5 (post AWS June 2025 cut)
 }
 
+# GPU VRAM in GB (for memory capacity effect analysis)
+GPU_VRAM_GB = {
+    "A10":  24,
+    "L40":  48,
+    "A100": 80,
+    "H100": 80,
+}
+
 # Throughput scaling relative to measured A10 baseline.
 GPU_SCALING_FACTORS = {
-    "A10": 1.0,
+    "A10":  1.0,
+    "L40":  1.224,  # measured: 9.152/7.472 (was estimated 1.44)
     "A100": 2.1,
     "H100": 3.2,
 }
@@ -231,11 +245,18 @@ def plan_capacity(
 ) -> Optional[CapacityResult]:
     """
     Compute minimum GPU fleet for given model+scheduler+traffic.
+
+    Uses measured per-GPU throughput when available (3-tuple key),
+    otherwise falls back to A10 baseline * scaling factor.
     """
-    base_mu = EMPIRICAL_MU.get((model, scheduler))
-    if base_mu is None:
-        return None
-    mu = base_mu * GPU_SCALING_FACTORS.get(gpu_type, 1.0)
+    measured = EMPIRICAL_MU.get((model, scheduler, gpu_type))
+    if measured is not None:
+        mu = measured
+    else:
+        base_mu = EMPIRICAL_MU.get((model, scheduler))
+        if base_mu is None:
+            return None
+        mu = base_mu * GPU_SCALING_FACTORS.get(gpu_type, 1.0)
 
     rho_single = lambda_rps / mu
     min_gpus, p99_wait = find_min_gpus(lambda_rps, mu, sla_sec)
@@ -277,7 +298,7 @@ def analyze_multi_gpu(
     capacity_rows = []
     annual_rows = []
 
-    for gpu_type in ("A10", "A100", "H100"):
+    for gpu_type in ("A10", "L40", "A100", "H100"):
         fcfs = plan_capacity("opt-1.3b", "fcfs", lambda_rps, gpu_type)
         vga = plan_capacity(
             "opt-1.3b",
@@ -663,6 +684,58 @@ def save_trace_histogram(
     plt.close()
 
 
+def analyze_memory_effect() -> dict[str, Any]:
+    """
+    Analyze how GPU VRAM capacity affects the VG+Aging throughput advantage.
+
+    On memory-constrained GPUs (A10, 24GB), VG+Aging resolves HoL blocking
+    caused by KV cache pressure. On larger-memory GPUs (L40, 48GB), the KV
+    cache is never the bottleneck, so scheduler choice is irrelevant.
+    """
+    rows = []
+    for gpu_type in ("A10", "L40"):
+        fcfs_key = ("opt-1.3b", "fcfs", gpu_type)
+        vga_key = ("opt-1.3b", "value_greedy_aging", gpu_type)
+        fcfs_mu = EMPIRICAL_MU.get(fcfs_key)
+        vga_mu = EMPIRICAL_MU.get(vga_key)
+        if fcfs_mu is None:
+            fcfs_mu = (EMPIRICAL_MU[("opt-1.3b", "fcfs")]
+                       * GPU_SCALING_FACTORS.get(gpu_type, 1.0))
+        if vga_mu is None:
+            vga_mu = (EMPIRICAL_MU[("opt-1.3b", "value_greedy_aging")]
+                      * GPU_SCALING_FACTORS.get(gpu_type, 1.0))
+        advantage_pct = (vga_mu - fcfs_mu) / fcfs_mu * 100.0
+        rows.append({
+            "gpu": gpu_type,
+            "vram_gb": GPU_VRAM_GB[gpu_type],
+            "fcfs_mu": fcfs_mu,
+            "vga_mu": vga_mu,
+            "advantage_pct": advantage_pct,
+        })
+    return {"memory_effect": rows}
+
+
+def print_memory_effect(mem_data: dict[str, Any]) -> None:
+    """Print memory capacity effect table and conclusion."""
+    print()
+    print("=" * 72)
+    print("MEMORY CAPACITY EFFECT ON SCHEDULER ADVANTAGE")
+    print("=" * 72)
+    print(f"{'GPU':<8} {'VRAM':<8} {'FCFS μ':<12} {'VGA μ':<12} "
+          f"{'VGA advantage':<16}")
+    print("-" * 56)
+    for row in mem_data["memory_effect"]:
+        sign = "+" if row["advantage_pct"] >= 0 else ""
+        print(f"{row['gpu']:<8} {row['vram_gb']}GB"
+              f"{'':>3} {row['fcfs_mu']:<12.3f} {row['vga_mu']:<12.3f} "
+              f"{sign}{row['advantage_pct']:.1f}%")
+    print()
+    print("  CONCLUSION: VG+Aging throughput advantage is memory-dependent.")
+    print("  On A10 (24GB): +24.3%. On L40 (48GB): +0.0%.")
+    print("  Larger KV cache eliminates head-of-line blocking")
+    print("  that VG+Aging resolves on memory-constrained GPUs.")
+
+
 def run_trace_analysis(results_dir: Path) -> dict[str, Any]:
     """
     Load real traces when possible, otherwise use synthetic fallback traces.
@@ -839,6 +912,10 @@ def run_analysis():
     print(f"  Operators running in this window can defer hardware")
     print(f"  procurement by deploying VG+Aging scheduler instead.")
 
+    # ── Memory capacity effect (A10 vs L40) ─────────────────
+    mem_effect = analyze_memory_effect()
+    print_memory_effect(mem_effect)
+
     # ── LaTeX table output ────────────────────────────────────
     latex = generate_latex_table(lambdas_1b)
     print()
@@ -892,6 +969,7 @@ def run_analysis():
         "results": results,
         "savings": savings,
         "multi_gpu": multi_gpu,
+        "memory_effect": mem_effect,
         "trace_analysis": trace_analysis,
     }
 
@@ -925,6 +1003,13 @@ def run_analysis():
         for row in multi_gpu["lambda_7_annual_savings"]:
             f.write(f"  {row['gpu']}: "
                     f"${row['annual_savings_usd']:,.0f}/year\n")
+        f.write("\nMemory capacity effect (measured):\n")
+        for row in mem_effect["memory_effect"]:
+            sign = "+" if row["advantage_pct"] >= 0 else ""
+            f.write(f"  {row['gpu']} ({row['vram_gb']}GB): "
+                    f"VGA {sign}{row['advantage_pct']:.1f}% "
+                    f"(FCFS {row['fcfs_mu']:.3f}, "
+                    f"VGA {row['vga_mu']:.3f} rps)\n")
         f.write("\nTrace-driven estimates:\n")
         for ta in trace_analysis["traces"]:
             f.write(f"  {ta['trace_name']}: "
@@ -943,33 +1028,18 @@ def run_analysis():
     return output
 
 
-def generate_latex_table(lambdas: list) -> str:
-    """Generate LaTeX table for the paper."""
-    lines = []
-    lines.append(r"\begin{table*}[t]")
-    lines.append(r"\centering")
-    lines.append(
-        r"\caption{Scheduler-aware GPU capacity planning for "
-        r"\texttt{opt-1.3b} on A10 GPU (\$1.20/hr). "
-        r"Minimum GPU count to meet P99 TTFT $\leq$ 2{,}000\,ms SLA. "
-        r"VG+Aging extends the single-GPU operating range "
-        r"from $\lambda < 7.5$\,rps to $\lambda < 9.3$\,rps, "
-        r"saving one GPU for traffic in that window.}"
-    )
-    lines.append(r"\label{tab:capacity}")
-    lines.append(r"\small")
-    lines.append(r"\begin{tabular}{lrrrrr}")
-    lines.append(r"\toprule")
-    lines.append(
-        r"$\lambda$ (rps) & \fcfs\ GPUs & \vga\ GPUs & "
-        r"GPUs saved & \$/month saved & "
-        r"\fcfs\ util\% \\"
-    )
-    lines.append(r"\midrule")
-
+def _latex_capacity_block(
+    lambdas: list,
+    gpu_type: str,
+    gpu_cost: float,
+) -> list[str]:
+    """Generate LaTeX rows for a single GPU type's capacity sweep."""
+    rows = []
     for lam in lambdas:
-        r_fcfs = plan_capacity("opt-1.3b", "fcfs", lam)
-        r_vga  = plan_capacity("opt-1.3b", "value_greedy_aging", lam)
+        r_fcfs = plan_capacity("opt-1.3b", "fcfs", lam, gpu_type)
+        r_vga = plan_capacity(
+            "opt-1.3b", "value_greedy_aging", lam, gpu_type,
+        )
         if not r_fcfs or not r_vga:
             continue
 
@@ -977,19 +1047,17 @@ def generate_latex_table(lambdas: list) -> str:
         saved_money = r_fcfs.cost_per_month - r_vga.cost_per_month
 
         fcfs_str = str(r_fcfs.min_gpus)
-        vga_str  = str(r_vga.min_gpus)
+        vga_str = str(r_vga.min_gpus)
         if not r_fcfs.sla_met:
             fcfs_str += r"$^\dagger$"
         if not r_vga.sla_met:
             vga_str += r"$^\dagger$"
 
-        saved_str = (f"$-${saved}" if saved > 0
-                     else "---")
+        saved_str = f"$-${saved}" if saved > 0 else "---"
         money_str = (f"\\${saved_money:,.0f}"
                      if saved_money > 0 else "---")
-        util_str  = f"{r_fcfs.utilization_pct:.0f}\\%"
+        util_str = f"{r_fcfs.utilization_pct:.0f}\\%"
 
-        # Bold the rows where savings occur
         if saved > 0:
             row = (f"\\textbf{{{lam}}} & "
                    f"\\textbf{{{fcfs_str}}} & "
@@ -1001,22 +1069,71 @@ def generate_latex_table(lambdas: list) -> str:
             row = (f"{lam} & {fcfs_str} & {vga_str} & "
                    f"{saved_str} & {money_str} & "
                    f"{util_str} \\\\")
-        lines.append(row)
+        rows.append(row)
+    return rows
+
+
+def generate_latex_table(lambdas: list) -> str:
+    """Generate LaTeX capacity table with both A10 and L40 (measured)."""
+    lines = []
+    lines.append(r"\begin{table*}[t]")
+    lines.append(r"\centering")
+    lines.append(
+        r"\caption{Scheduler-aware GPU capacity planning for "
+        r"\texttt{opt-1.3b}. "
+        r"Minimum GPU count to meet P99 TTFT $\leq$ 2{,}000\,ms SLA. "
+        r"On A10 (24\,GB), VG+Aging extends the single-GPU range "
+        r"from $\lambda < 7.5$\,rps to $\lambda < 9.3$\,rps. "
+        r"On L40 (48\,GB), the advantage vanishes: "
+        r"larger KV cache eliminates head-of-line blocking.}"
+    )
+    lines.append(r"\label{tab:capacity}")
+    lines.append(r"\small")
+    lines.append(r"\begin{tabular}{lrrrrr}")
+    lines.append(r"\toprule")
+    lines.append(
+        r"$\lambda$ (rps) & \fcfs\ GPUs & \vga\ GPUs & "
+        r"GPUs saved & \$/month saved & "
+        r"\fcfs\ util\% \\"
+    )
+
+    # A10 block
+    lines.append(r"\midrule")
+    lines.append(
+        r"\multicolumn{6}{l}{\textit{A10 (24\,GB, \$1.20/hr) "
+        r"--- measured}} \\"
+    )
+    lines.append(r"\midrule")
+    lines.extend(_latex_capacity_block(
+        lambdas, "A10", GPU_COST_PER_HOUR["A10"],
+    ))
+
+    # L40 block
+    lines.append(r"\midrule")
+    lines.append(
+        r"\multicolumn{6}{l}{\textit{L40 (48\,GB, \$1.58/hr) "
+        r"--- measured}} \\"
+    )
+    lines.append(r"\midrule")
+    lines.extend(_latex_capacity_block(
+        lambdas, "L40", GPU_COST_PER_HOUR["L40"],
+    ))
 
     lines.append(r"\midrule")
 
-    # Summary row
-    mu_fcfs = EMPIRICAL_MU[("opt-1.3b", "fcfs")]
-    mu_vga  = EMPIRICAL_MU[("opt-1.3b", "value_greedy_aging")]
+    mu_fcfs_a10 = EMPIRICAL_MU[("opt-1.3b", "fcfs")]
+    mu_vga_a10 = EMPIRICAL_MU[("opt-1.3b", "value_greedy_aging")]
+    mu_fcfs_l40 = EMPIRICAL_MU[("opt-1.3b", "fcfs", "L40")]
+    mu_vga_l40 = EMPIRICAL_MU[("opt-1.3b", "value_greedy_aging", "L40")]
     lines.append(
         r"\multicolumn{6}{l}{\scriptsize "
         r"$^\dagger$SLA not met. "
-        r"\fcfs\ $\mu_{\text{eff}}$ = "
-        f"{mu_fcfs:.3f}\\,rps; "
-        r"\vga\ $\mu_{\text{eff}}$ = "
-        f"{mu_vga:.3f}\\,rps. "
-        r"Savings window: "
-        f"{mu_fcfs:.1f}--{mu_vga:.1f}\\,rps."
+        f"A10: \\fcfs\\ $\\mu$ = {mu_fcfs_a10:.3f}, "
+        f"\\vga\\ $\\mu$ = {mu_vga_a10:.3f}\\,rps "
+        f"(+{(mu_vga_a10-mu_fcfs_a10)/mu_fcfs_a10*100:.1f}\\%). "
+        f"L40: \\fcfs\\ $\\mu$ = {mu_fcfs_l40:.3f}, "
+        f"\\vga\\ $\\mu$ = {mu_vga_l40:.3f}\\,rps "
+        f"(+{(mu_vga_l40-mu_fcfs_l40)/mu_fcfs_l40*100:.1f}\\%)."
         r"}"
     )
     lines.append(r"\bottomrule")

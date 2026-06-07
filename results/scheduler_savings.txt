@@ -11,13 +11,19 @@ Per-lambda savings (opt-1.3b, A10):
 
 Multi-GPU scaling (λ=10 rps):
   A10: FCFS 2 → VG+Aging 2 (save 0 GPU, $0/month)
+  L40: FCFS 2 → VG+Aging 2 (save 0 GPU, $0/month)
   A100: FCFS 1 → VG+Aging 1 (save 0 GPU, $0/month)
   H100: FCFS 1 → VG+Aging 1 (save 0 GPU, $0/month)
 
 Annual savings (λ=7 rps):
   A10: $10,512/year
+  L40: $0/year
   A100: $0/year
   H100: $0/year
+
+Memory capacity effect (measured):
+  A10 (24GB): VGA +24.3% (FCFS 7.472, VGA 9.286 rps)
+  L40 (48GB): VGA +0.0% (FCFS 9.152, VGA 9.156 rps)
 
 Trace-driven estimates:
   lmsys_chatbot_arena: $1,219/year (12% windows in savings range)

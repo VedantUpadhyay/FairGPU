@@ -10,7 +10,9 @@
       "('opt-1.3b', 'value_greedy_aging')": 9.286,
       "('opt-6.7b', 'fcfs')": 2.876,
       "('opt-6.7b', 'value_greedy')": 2.76,
-      "('opt-6.7b', 'value_greedy_aging')": 1.517
+      "('opt-6.7b', 'value_greedy_aging')": 1.517,
+      "('opt-1.3b', 'fcfs', 'L40')": 9.152,
+      "('opt-1.3b', 'value_greedy_aging', 'L40')": 9.156
     }
   },
   "results": [
@@ -425,6 +427,7 @@
   "multi_gpu": {
     "scaling_factors": {
       "A10": 1.0,
+      "L40": 1.224,
       "A100": 2.1,
       "H100": 3.2
     },
@@ -438,6 +441,16 @@
         "monthly_savings_usd": 0.0,
         "fcfs_mu_rps": 7.472,
         "vg_aging_mu_rps": 9.286
+      },
+      {
+        "gpu": "L40",
+        "lambda_rps": 10.0,
+        "fcfs_gpus": 2,
+        "vg_aging_gpus": 2,
+        "gpus_saved": 0,
+        "monthly_savings_usd": 0.0,
+        "fcfs_mu_rps": 9.152,
+        "vg_aging_mu_rps": 9.156
       },
       {
         "gpu": "A100",
@@ -468,6 +481,12 @@
         "annual_savings_usd": 10512.0
       },
       {
+        "gpu": "L40",
+        "gpu_price_per_hour_usd": 1.58,
+        "lambda_rps": 7.0,
+        "annual_savings_usd": 0.0
+      },
+      {
         "gpu": "A100",
         "gpu_price_per_hour_usd": 3.0,
         "lambda_rps": 7.0,
@@ -478,6 +497,24 @@
         "gpu_price_per_hour_usd": 3.93,
         "lambda_rps": 7.0,
         "annual_savings_usd": 0.0
+      }
+    ]
+  },
+  "memory_effect": {
+    "memory_effect": [
+      {
+        "gpu": "A10",
+        "vram_gb": 24,
+        "fcfs_mu": 7.472,
+        "vga_mu": 9.286,
+        "advantage_pct": 24.27730192719485
+      },
+      {
+        "gpu": "L40",
+        "vram_gb": 48,
+        "fcfs_mu": 9.152,
+        "vga_mu": 9.156,
+        "advantage_pct": 0.043706293706308304
       }
     ]
   },

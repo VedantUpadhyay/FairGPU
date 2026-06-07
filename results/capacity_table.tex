@@ -1,11 +1,13 @@
 \begin{table*}[t]
 \centering
-\caption{Scheduler-aware GPU capacity planning for \texttt{opt-1.3b} on A10 GPU (\$1.20/hr). Minimum GPU count to meet P99 TTFT $\leq$ 2{,}000\,ms SLA. VG+Aging extends the single-GPU operating range from $\lambda < 7.5$\,rps to $\lambda < 9.3$\,rps, saving one GPU for traffic in that window.}
+\caption{Scheduler-aware GPU capacity planning for \texttt{opt-1.3b}. Minimum GPU count to meet P99 TTFT $\leq$ 2{,}000\,ms SLA. On A10 (24\,GB), VG+Aging extends the single-GPU range from $\lambda < 7.5$\,rps to $\lambda < 9.3$\,rps. On L40 (48\,GB), the advantage vanishes: larger KV cache eliminates head-of-line blocking.}
 \label{tab:capacity}
 \small
 \begin{tabular}{lrrrrr}
 \toprule
 $\lambda$ (rps) & \fcfs\ GPUs & \vga\ GPUs & GPUs saved & \$/month saved & \fcfs\ util\% \\
+\midrule
+\multicolumn{6}{l}{\textit{A10 (24\,GB, \$1.20/hr) --- measured}} \\
 \midrule
 2 & 1 & 1 & --- & --- & 27\% \\
 4 & 1 & 1 & --- & --- & 54\% \\
@@ -17,7 +19,19 @@ $\lambda$ (rps) & \fcfs\ GPUs & \vga\ GPUs & GPUs saved & \$/month saved & \fcfs
 12 & 2 & 2 & --- & --- & 80\% \\
 \textbf{15} & \textbf{3} & \textbf{2} & \textbf{$-$1} & \textbf{\$864} & \textbf{67\%} \\
 \midrule
-\multicolumn{6}{l}{\scriptsize $^\dagger$SLA not met. \fcfs\ $\mu_{\text{eff}}$ = 7.472\,rps; \vga\ $\mu_{\text{eff}}$ = 9.286\,rps. Savings window: 7.5--9.3\,rps.}
+\multicolumn{6}{l}{\textit{L40 (48\,GB, \$1.58/hr) --- measured}} \\
+\midrule
+2 & 1 & 1 & --- & --- & 22\% \\
+4 & 1 & 1 & --- & --- & 44\% \\
+6 & 1 & 1 & --- & --- & 66\% \\
+7 & 1 & 1 & --- & --- & 76\% \\
+8 & 2 & 2 & --- & --- & 44\% \\
+9 & 2 & 2 & --- & --- & 49\% \\
+10 & 2 & 2 & --- & --- & 55\% \\
+12 & 2 & 2 & --- & --- & 66\% \\
+15 & 2 & 2 & --- & --- & 82\% \\
+\midrule
+\multicolumn{6}{l}{\scriptsize $^\dagger$SLA not met. A10: \fcfs\ $\mu$ = 7.472, \vga\ $\mu$ = 9.286\,rps (+24.3\%). L40: \fcfs\ $\mu$ = 9.152, \vga\ $\mu$ = 9.156\,rps (+0.0\%).}
 \bottomrule
 \end{tabular}
 \end{table*}
