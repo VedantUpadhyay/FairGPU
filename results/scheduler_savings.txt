@@ -1,0 +1,24 @@
+Scheduler-Aware GPU Capacity Savings
+=============================================
+
+SLA: P99 TTFT <= 2000ms
+GPU: A10 @ $1.20/hr
+
+Per-lambda savings (opt-1.3b, A10):
+  λ=6 rps: 1 GPU saved → $864/month
+  λ=7 rps: 1 GPU saved → $864/month
+  λ=15 rps: 1 GPU saved → $864/month
+
+Multi-GPU scaling (λ=10 rps):
+  A10: FCFS 2 → VG+Aging 2 (save 0 GPU, $0/month)
+  A100: FCFS 1 → VG+Aging 1 (save 0 GPU, $0/month)
+  H100: FCFS 1 → VG+Aging 1 (save 0 GPU, $0/month)
+
+Annual savings (λ=7 rps):
+  A10: $10,512/year
+  A100: $0/year
+  H100: $0/year
+
+Trace-driven estimates:
+  lmsys_chatbot_arena: $1,219/year (12% windows in savings range)
+  azure_llm_inference: $3,456/year (8% windows in savings range)

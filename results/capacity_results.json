@@ -1,0 +1,530 @@
+{
+  "metadata": {
+    "sla_p99_ttft_ms": 2000.0,
+    "gpu_type": "A10",
+    "gpu_cost_per_hour": 1.2,
+    "empirical_mu": {
+      "('opt-1.3b', 'fcfs')": 7.472,
+      "('opt-1.3b', 'chunked_fcfs')": 8.228,
+      "('opt-1.3b', 'value_greedy')": 7.787,
+      "('opt-1.3b', 'value_greedy_aging')": 9.286,
+      "('opt-6.7b', 'fcfs')": 2.876,
+      "('opt-6.7b', 'value_greedy')": 2.76,
+      "('opt-6.7b', 'value_greedy_aging')": 1.517
+    }
+  },
+  "results": [
+    {
+      "model": "opt-1.3b",
+      "scheduler": "fcfs",
+      "lambda_rps": 2,
+      "mu_rps": 7.472,
+      "rho_single": 0.26766595289079226,
+      "min_gpus": 1,
+      "p99_wait_ms": 546.9268284025799,
+      "utilization_pct": 26.766595289079227,
+      "gpu_type": "A10",
+      "cost_per_hour": 1.2,
+      "cost_per_month": 864.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy_aging",
+      "lambda_rps": 2,
+      "mu_rps": 9.286,
+      "rho_single": 0.21537798836958863,
+      "min_gpus": 1,
+      "p99_wait_ms": 380.92758939716293,
+      "utilization_pct": 21.537798836958864,
+      "gpu_type": "A10",
+      "cost_per_hour": 1.2,
+      "cost_per_month": 864.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "fcfs",
+      "lambda_rps": 4,
+      "mu_rps": 7.472,
+      "rho_single": 0.5353319057815845,
+      "min_gpus": 1,
+      "p99_wait_ms": 1061.616009671331,
+      "utilization_pct": 53.533190578158454,
+      "gpu_type": "A10",
+      "cost_per_hour": 1.2,
+      "cost_per_month": 864.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy_aging",
+      "lambda_rps": 4,
+      "mu_rps": 9.286,
+      "rho_single": 0.43075597673917726,
+      "min_gpus": 1,
+      "p99_wait_ms": 656.1834273378121,
+      "utilization_pct": 43.07559767391773,
+      "gpu_type": "A10",
+      "cost_per_hour": 1.2,
+      "cost_per_month": 864.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "fcfs",
+      "lambda_rps": 6,
+      "mu_rps": 7.472,
+      "rho_single": 0.8029978586723768,
+      "min_gpus": 2,
+      "p99_wait_ms": 317.67700735102164,
+      "utilization_pct": 40.149892933618844,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy_aging",
+      "lambda_rps": 6,
+      "mu_rps": 9.286,
+      "rho_single": 0.6461339651087659,
+      "min_gpus": 1,
+      "p99_wait_ms": 1178.9563922750574,
+      "utilization_pct": 64.61339651087658,
+      "gpu_type": "A10",
+      "cost_per_hour": 1.2,
+      "cost_per_month": 864.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "fcfs",
+      "lambda_rps": 7,
+      "mu_rps": 7.472,
+      "rho_single": 0.936830835117773,
+      "min_gpus": 2,
+      "p99_wait_ms": 390.60460334016824,
+      "utilization_pct": 46.84154175588865,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy_aging",
+      "lambda_rps": 7,
+      "mu_rps": 9.286,
+      "rho_single": 0.7538229592935602,
+      "min_gpus": 1,
+      "p99_wait_ms": 1762.117841138713,
+      "utilization_pct": 75.38229592935602,
+      "gpu_type": "A10",
+      "cost_per_hour": 1.2,
+      "cost_per_month": 864.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "fcfs",
+      "lambda_rps": 8,
+      "mu_rps": 7.472,
+      "rho_single": 1.070663811563169,
+      "min_gpus": 2,
+      "p99_wait_ms": 478.89732767877786,
+      "utilization_pct": 53.533190578158454,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy_aging",
+      "lambda_rps": 8,
+      "mu_rps": 9.286,
+      "rho_single": 0.8615119534783545,
+      "min_gpus": 2,
+      "p99_wait_ms": 280.1093728097296,
+      "utilization_pct": 43.07559767391773,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "fcfs",
+      "lambda_rps": 9,
+      "mu_rps": 7.472,
+      "rho_single": 1.2044967880085653,
+      "min_gpus": 2,
+      "p99_wait_ms": 591.919214095056,
+      "utilization_pct": 60.224839400428266,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy_aging",
+      "lambda_rps": 9,
+      "mu_rps": 9.286,
+      "rho_single": 0.9692009476631489,
+      "min_gpus": 2,
+      "p99_wait_ms": 330.1232370911844,
+      "utilization_pct": 48.460047383157445,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "fcfs",
+      "lambda_rps": 10,
+      "mu_rps": 7.472,
+      "rho_single": 1.3383297644539613,
+      "min_gpus": 2,
+      "p99_wait_ms": 745.989744767727,
+      "utilization_pct": 66.91648822269806,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy_aging",
+      "lambda_rps": 10,
+      "mu_rps": 9.286,
+      "rho_single": 1.0768899418479432,
+      "min_gpus": 2,
+      "p99_wait_ms": 389.06138643060547,
+      "utilization_pct": 53.84449709239716,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "fcfs",
+      "lambda_rps": 12,
+      "mu_rps": 7.472,
+      "rho_single": 1.6059957173447537,
+      "min_gpus": 2,
+      "p99_wait_ms": 1350.4378688773966,
+      "utilization_pct": 80.29978586723769,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy_aging",
+      "lambda_rps": 12,
+      "mu_rps": 9.286,
+      "rho_single": 1.2922679302175317,
+      "min_gpus": 2,
+      "p99_wait_ms": 552.6506357247636,
+      "utilization_pct": 64.61339651087658,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "fcfs",
+      "lambda_rps": 15,
+      "mu_rps": 7.472,
+      "rho_single": 2.007494646680942,
+      "min_gpus": 3,
+      "p99_wait_ms": 472.9991018202701,
+      "utilization_pct": 66.91648822269806,
+      "gpu_type": "A10",
+      "cost_per_hour": 3.5999999999999996,
+      "cost_per_month": 2591.9999999999995,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy_aging",
+      "lambda_rps": 15,
+      "mu_rps": 9.286,
+      "rho_single": 1.6153349127719148,
+      "min_gpus": 2,
+      "p99_wait_ms": 1115.5373045273302,
+      "utilization_pct": 80.76674563859574,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "fcfs",
+      "lambda_rps": 10.0,
+      "mu_rps": 7.472,
+      "rho_single": 1.3383297644539613,
+      "min_gpus": 2,
+      "p99_wait_ms": 745.989744767727,
+      "utilization_pct": 66.91648822269806,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "chunked_fcfs",
+      "lambda_rps": 10.0,
+      "mu_rps": 8.228,
+      "rho_single": 1.215362177929023,
+      "min_gpus": 2,
+      "p99_wait_ms": 547.2341022155209,
+      "utilization_pct": 60.768108896451146,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy",
+      "lambda_rps": 10.0,
+      "mu_rps": 7.787,
+      "rho_single": 1.284191601386927,
+      "min_gpus": 2,
+      "p99_wait_ms": 649.7914288463904,
+      "utilization_pct": 64.20958006934634,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-1.3b",
+      "scheduler": "value_greedy_aging",
+      "lambda_rps": 10.0,
+      "mu_rps": 9.286,
+      "rho_single": 1.0768899418479432,
+      "min_gpus": 2,
+      "p99_wait_ms": 389.06138643060547,
+      "utilization_pct": 53.84449709239716,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-6.7b",
+      "scheduler": "fcfs",
+      "lambda_rps": 1,
+      "mu_rps": 2.876,
+      "rho_single": 0.34770514603616137,
+      "min_gpus": 1,
+      "p99_wait_ms": 1734.7540967626408,
+      "utilization_pct": 34.770514603616135,
+      "gpu_type": "A10",
+      "cost_per_hour": 1.2,
+      "cost_per_month": 864.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-6.7b",
+      "scheduler": "fcfs",
+      "lambda_rps": 2,
+      "mu_rps": 2.876,
+      "rho_single": 0.6954102920723227,
+      "min_gpus": 2,
+      "p99_wait_ms": 691.0293635549411,
+      "utilization_pct": 34.770514603616135,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-6.7b",
+      "scheduler": "fcfs",
+      "lambda_rps": 3,
+      "mu_rps": 2.876,
+      "rho_single": 1.043115438108484,
+      "min_gpus": 2,
+      "p99_wait_ms": 1192.7111254299807,
+      "utilization_pct": 52.155771905424196,
+      "gpu_type": "A10",
+      "cost_per_hour": 2.4,
+      "cost_per_month": 1728.0,
+      "sla_met": true
+    },
+    {
+      "model": "opt-6.7b",
+      "scheduler": "fcfs",
+      "lambda_rps": 4,
+      "mu_rps": 2.876,
+      "rho_single": 1.3908205841446455,
+      "min_gpus": 3,
+      "p99_wait_ms": 582.9654793448974,
+      "utilization_pct": 46.36068613815485,
+      "gpu_type": "A10",
+      "cost_per_hour": 3.5999999999999996,
+      "cost_per_month": 2591.9999999999995,
+      "sla_met": true
+    },
+    {
+      "model": "opt-6.7b",
+      "scheduler": "fcfs",
+      "lambda_rps": 5,
+      "mu_rps": 2.876,
+      "rho_single": 1.7385257301808068,
+      "min_gpus": 3,
+      "p99_wait_ms": 881.6945917834288,
+      "utilization_pct": 57.95085767269356,
+      "gpu_type": "A10",
+      "cost_per_hour": 3.5999999999999996,
+      "cost_per_month": 2591.9999999999995,
+      "sla_met": true
+    }
+  ],
+  "savings": [
+    {
+      "lambda_rps": 6,
+      "model": "opt-1.3b",
+      "fcfs_gpus": 2,
+      "vga_gpus": 1,
+      "gpus_saved": 1,
+      "monthly_savings_usd": 864.0,
+      "annual_savings_usd": 10368.0
+    },
+    {
+      "lambda_rps": 7,
+      "model": "opt-1.3b",
+      "fcfs_gpus": 2,
+      "vga_gpus": 1,
+      "gpus_saved": 1,
+      "monthly_savings_usd": 864.0,
+      "annual_savings_usd": 10368.0
+    },
+    {
+      "lambda_rps": 15,
+      "model": "opt-1.3b",
+      "fcfs_gpus": 3,
+      "vga_gpus": 2,
+      "gpus_saved": 1,
+      "monthly_savings_usd": 863.9999999999995,
+      "annual_savings_usd": 10367.999999999995
+    }
+  ],
+  "multi_gpu": {
+    "scaling_factors": {
+      "A10": 1.0,
+      "A100": 2.1,
+      "H100": 3.2
+    },
+    "lambda_10_capacity": [
+      {
+        "gpu": "A10",
+        "lambda_rps": 10.0,
+        "fcfs_gpus": 2,
+        "vg_aging_gpus": 2,
+        "gpus_saved": 0,
+        "monthly_savings_usd": 0.0,
+        "fcfs_mu_rps": 7.472,
+        "vg_aging_mu_rps": 9.286
+      },
+      {
+        "gpu": "A100",
+        "lambda_rps": 10.0,
+        "fcfs_gpus": 1,
+        "vg_aging_gpus": 1,
+        "gpus_saved": 0,
+        "monthly_savings_usd": 0.0,
+        "fcfs_mu_rps": 15.691200000000002,
+        "vg_aging_mu_rps": 19.5006
+      },
+      {
+        "gpu": "H100",
+        "lambda_rps": 10.0,
+        "fcfs_gpus": 1,
+        "vg_aging_gpus": 1,
+        "gpus_saved": 0,
+        "monthly_savings_usd": 0.0,
+        "fcfs_mu_rps": 23.910400000000003,
+        "vg_aging_mu_rps": 29.7152
+      }
+    ],
+    "lambda_7_annual_savings": [
+      {
+        "gpu": "A10",
+        "gpu_price_per_hour_usd": 1.2,
+        "lambda_rps": 7.0,
+        "annual_savings_usd": 10512.0
+      },
+      {
+        "gpu": "A100",
+        "gpu_price_per_hour_usd": 3.0,
+        "lambda_rps": 7.0,
+        "annual_savings_usd": 0.0
+      },
+      {
+        "gpu": "H100",
+        "gpu_price_per_hour_usd": 3.93,
+        "lambda_rps": 7.0,
+        "annual_savings_usd": 0.0
+      }
+    ]
+  },
+  "trace_analysis": {
+    "metadata": {
+      "savings_window_low_rps": 7.472,
+      "savings_window_high_rps": 9.286,
+      "gpu_type": "A10",
+      "gpu_price_per_hour_usd": 1.2
+    },
+    "traces": [
+      {
+        "trace_name": "lmsys_chatbot_arena",
+        "source": "synthetic_fallback",
+        "fallback_reason": "Dataset 'lmsys/chatbot_arena_conversations' is a gated dataset on the Hub. You must be authenticated to access it.",
+        "n_windows": 2016,
+        "window_minutes": 5,
+        "gpu_type": "A10",
+        "savings_window_rps": [
+          7.472,
+          9.286
+        ],
+        "fraction_in_savings_window": 0.12003968253968254,
+        "hours_in_savings_window": 20.166666666666664,
+        "expected_monthly_savings_usd": 101.57142857142885,
+        "expected_annual_savings_usd": 1218.8571428571463,
+        "mean_lambda_rps": 6.883710711822622,
+        "max_lambda_rps": 13.599564442674234
+      },
+      {
+        "trace_name": "azure_llm_inference",
+        "source": "real_azure_public_dataset:https://raw.githubusercontent.com/Azure/AzurePublicDataset/master/data/AzureLLMInferenceTrace_conv.csv",
+        "fallback_reason": null,
+        "n_windows": 12,
+        "window_minutes": 5,
+        "gpu_type": "A10",
+        "savings_window_rps": [
+          7.472,
+          9.286
+        ],
+        "fraction_in_savings_window": 0.08333333333333333,
+        "hours_in_savings_window": 0.08333333333333333,
+        "expected_monthly_savings_usd": 288.0,
+        "expected_annual_savings_usd": 3456.0,
+        "mean_lambda_rps": 5.379444444444444,
+        "max_lambda_rps": 7.476666666666667
+      }
+    ]
+  }
+}

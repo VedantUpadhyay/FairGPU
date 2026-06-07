@@ -1,0 +1,23 @@
+\begin{table*}[t]
+\centering
+\caption{Scheduler-aware GPU capacity planning for \texttt{opt-1.3b} on A10 GPU (\$1.20/hr). Minimum GPU count to meet P99 TTFT $\leq$ 2{,}000\,ms SLA. VG+Aging extends the single-GPU operating range from $\lambda < 7.5$\,rps to $\lambda < 9.3$\,rps, saving one GPU for traffic in that window.}
+\label{tab:capacity}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+$\lambda$ (rps) & \fcfs\ GPUs & \vga\ GPUs & GPUs saved & \$/month saved & \fcfs\ util\% \\
+\midrule
+2 & 1 & 1 & --- & --- & 27\% \\
+4 & 1 & 1 & --- & --- & 54\% \\
+\textbf{6} & \textbf{2} & \textbf{1} & \textbf{$-$1} & \textbf{\$864} & \textbf{40\%} \\
+\textbf{7} & \textbf{2} & \textbf{1} & \textbf{$-$1} & \textbf{\$864} & \textbf{47\%} \\
+8 & 2 & 2 & --- & --- & 54\% \\
+9 & 2 & 2 & --- & --- & 60\% \\
+10 & 2 & 2 & --- & --- & 67\% \\
+12 & 2 & 2 & --- & --- & 80\% \\
+\textbf{15} & \textbf{3} & \textbf{2} & \textbf{$-$1} & \textbf{\$864} & \textbf{67\%} \\
+\midrule
+\multicolumn{6}{l}{\scriptsize $^\dagger$SLA not met. \fcfs\ $\mu_{\text{eff}}$ = 7.472\,rps; \vga\ $\mu_{\text{eff}}$ = 9.286\,rps. Savings window: 7.5--9.3\,rps.}
+\bottomrule
+\end{tabular}
+\end{table*}
